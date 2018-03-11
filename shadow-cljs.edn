@@ -8,6 +8,6 @@
  :builds
  {:app
   {:target :node-script
-   :output-to "target/out.js"
+   :output-to "out.js"
    :main gudb.core/main!}
    }}}
