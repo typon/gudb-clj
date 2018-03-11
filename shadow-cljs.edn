@@ -1,13 +1,17 @@
 ;; shadow-cljs configuration
-{:source-paths
- ["src"]
+{
+    :source-paths [
+        "src"
+    ]
 
- :dependencies
- []
+    :dependencies [
+    ]
 
- :builds
- {:app
-  {:target :node-script
-   :output-to "out.js"
-   :main gudb.core/main!}
-   }}}
+    :builds {
+        :app {
+            :target :node-script
+            :output-to "out.js"
+            :main gudb.core/main!
+        }
+    }
+}

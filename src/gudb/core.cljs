@@ -1,22 +1,36 @@
 (ns gudb.core
-  (:require ["blessed" :as blessed]))
+  (:require [gudb.utils :refer [r-el r-component]]
+            ["blessed" :as blessed]
+            ["react" :as react]
+            ["create-react-class" :as create-react-class]
+            ["react-blessed" :as react-blessed]))
+
+
+(def app-state (atom {:display 0 :history []}))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Components
+
+(def mybox
+  (r-el "box" {
+    "top" "center",
+    "left" "center",
+    "width" "50%",
+    "height" "50%",
+    "content" "Blessed React WORKS WOOO try this {bold} world{/bold}"
+    "border" {"type" "line"},
+    "style" {"fg" "white", "bg" "magenta"}
+    "tags" true}))
+
+(def App
+  (r-component "App"
+   :render (fn [props] mybox)))
 
 (def screen (blessed/screen (js-obj "smartCSR" true)))
 
-(def box (blessed/box (clj->js
-          {"top" "center", 
-           "left" "center", 
-           "width" "50%", 
-           "height" "50%", 
-           "content" "REE {bold} world{/bold}",
-           "tags" true,
-           "border" {"type" "line"},
-           "style" {"fg" "white", "bg" "magenta"}
-           })))
-
+(defn render [state]
+  (react-blessed/render (r-el App state) screen))
 
 (defn main! [] (do
-  (.append screen box)
-  (.focus box)
-  (.render screen)
+  (render @app-state)
   ))

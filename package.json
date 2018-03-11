@@ -5,10 +5,14 @@
         "pkg": "4.3.0"
     },
     "dependencies": {
-        "blessed": "0.1.81"
+        "blessed": "0.1.81",
+        "react-blessed": "0.2.1",
+        "react": "16.2.0",
+        "create-react-class": "15.6.3"
     },
     "scripts": {
         "build-cljs": "shadow-cljs release app",
+        "watch-cljs": "shadow-cljs watch app",
         "build-binary": "pkg $*"
     }
 }

@@ -3,7 +3,16 @@ gudb
 Welcome to gudb, a prettier gdb interface. 
 
 
-(Inspired by pudb, the awesome python debugger.)
+Read what others have to say about it!
+
+"It helped marginally increase my productivity because I sometimes debug over ssh."
+    - My cousin
+
+"Who the hell still writes C?"
+    - Reddit comment
+
+"Stop emailing me you weirdo."
+    - Rich Hickey
 
 ### Requirements
 
