@@ -5,6 +5,7 @@ SHADOW_CLJS_BUILD = shadow-cljs.edn
 OUTPUT_JS = out.js
 PLATFORM ?= latest-macos-x64
 OUTPUT_EXE = gudb-$(PLATFORM).exe
+LOG = gudb.log
 
 build: $(OUTPUT_JS)
 
@@ -14,7 +15,7 @@ run: $(OUTPUT_JS)
 	node $(OUTPUT_JS)
 
 clean:
-	rm $(OUTPUT_JS) $(OUTPUT_EXE)
+	rm $(OUTPUT_JS) $(OUTPUT_EXE) $(LOG)
 
 watch: $(SRC_FILES) $(NPM_OUTPUT) $(SHADOW_CLJS_BUILD)
 	npm run watch-cljs

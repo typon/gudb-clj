@@ -25,5 +25,3 @@
         :render (fn []
                   (this-as t
                     (render (js->clj (.-props t) :keywordize-keys true))))}))
-
-

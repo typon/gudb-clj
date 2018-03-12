@@ -5,6 +5,7 @@
     ]
 
     :dependencies [
+        [shrimp-log "0.1.0-SNAPSHOT"]
     ]
 
     :builds {
