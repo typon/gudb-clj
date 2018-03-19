@@ -1,10 +1,12 @@
 (ns gudb.flow
-  (:require [cljs.core.async :as a])
+  (:require [cljs.core.async :as a]
+            [gudb.gdb :refer [gdb-cmds]])
   (:require-macros [cljs.core.async.macros :refer [go go-loop]])
   (:use-macros [shrimp-log.macros :only [trace debug spy]]))
 
 (defonce app-state (atom {:elements {}
-                          :input-box-value ""
+                          :input-box-value "Empty!"
+                          :changed false
                           }))
 (defonce actions (a/chan))
 
@@ -24,9 +26,9 @@
 (go-loop []
          (when-let [a (a/<! actions)]
            (let [[type data] a]
-             (trace (str "Handle action: " type "\nData: " data))
+             ;(trace (str "Handle action: " type "\nData: " data))
              (swap! app-state transform data dispatch type))
-             (trace (str "State: " @app-state))
+             ; (trace (str "State: " @app-state))
           (recur)))
 
 ;; State here is map, not atom!
@@ -39,10 +41,33 @@
         [output-box] [(get-in state [:elements :output-box])]
         [screen] [(get-in state [:elements :screen])]
        ]
-    (.setContent output-box curr-text)
-    (.render screen)
+    ; (.setContent output-box curr-text)
+    ; (dispatch :set-box-contents {:el output-box :value curr-text})
+    ; (when-not (= (:input-box-value state) curr-text) (assoc state :input-box-value curr-text))))
+    ; (a/put! gdb-cmds curr-text)
     (assoc state :input-box-value curr-text)
     ))
+
+(defmethod transform :input-box-reset
+  [state _]
+  (let [[input-box] [(get-in state [:elements :input-box])]
+       ]
+    ; (.setContent output-box curr-text)
+    ; (dispatch :set-box-contents {:el output-box :value curr-text})
+    ; (when-not (= (:input-box-value state) curr-text) (assoc state :input-box-value curr-text))))
+    ; (a/put! gdb-cmds curr-text)
+    (.clearValue input-box)
+    (assoc state :input-box-value "")))
+
+
+(defmethod transform :set-box-contents
+  [state args]
+  (let [[box-elem text] [(:el args) (:value args)]
+       [screen] [(get-in state [:elements :screen])]
+       ]
+    (.setContent box-elem text)
+    (.render screen)
+    state))
 
 (defmethod transform :register-elem
   [state value]

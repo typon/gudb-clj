@@ -9,9 +9,14 @@
     ]
 
     :builds {
-        :app {
+        :rel {
             :target :node-script
-            :output-to "out.js"
+            :output-to "out_rel.js"
+            :main gudb.core/main!
+        }
+        :dev {
+            :target :node-script
+            :output-to "out_dev.js"
             :main gudb.core/main!
         }
     }

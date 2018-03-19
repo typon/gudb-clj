@@ -3,6 +3,7 @@
     [gudb.utils :refer [r-el r-component]]
     [gudb.layout :refer [App screen]]
     [gudb.flow :refer [app-state]]
+    [gudb.gdb :refer [load-gdb]]
     [cljs.pprint :refer [cl-format]]
     [shrimp-log.core :as l]
     ["blessed" :as blessed]
@@ -13,7 +14,8 @@
 
 
 (l/set-opts! :out-file :log-file
-             :pretty-print true)
+             :pretty-print true
+             :log-level :debug)
 
 
 
@@ -39,10 +41,26 @@
 
 
 (defn render [state]
-  (react-blessed/render (r-el App state) screen))
+  (do 
+    (trace "Rendering...........")
+    (react-blessed/render (r-el App state) screen)))
 
 (defn main! [] (do
   (trace "Starting gudb")
+  (load-gdb "/Users/typon/githubz/gudb/sample_program/simple")
   (.key screen (clj->js ["escape" "q" "C-c"]) (fn [ch, key] (js/process.exit 0)))
   (render @app-state)
   ))
+
+; Every time state changes, call render function again to redraw everything.
+(add-watch app-state :redraw 
+  (fn [_ _ old-state new-state]
+    ; Only re-render when old-state != new-state, ignoring the :elements
+    ; because they get regenerated every time react renders. If we re-render
+    ; then we get in infinite loop.
+    (when-not 
+      (= 
+        (dissoc old-state :elements)
+        (dissoc new-state :elements))
+      (render new-state))))
+                                
