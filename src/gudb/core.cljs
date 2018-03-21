@@ -10,12 +10,12 @@
     ["react" :as react]
     ["create-react-class" :as create-react-class]
     ["react-blessed" :as react-blessed])
-  (:use-macros [shrimp-log.macros :only [trace spy]]))
+  (:use-macros [shrimp-log.macros :only [debug trace spy]]))
 
 
 (l/set-opts! :out-file :log-file
              :pretty-print true
-             :log-level :debug)
+             :log-level :trace)
 
 
 
@@ -42,7 +42,7 @@
 
 (defn render [state]
   (do 
-    (trace "Rendering...........")
+    (debug "Rendering...........")
     (react-blessed/render (r-el App state) screen)))
 
 (defn main! [] (do

@@ -4,16 +4,19 @@
         "source-map-support": "^0.5.3",
         "pkg": "4.3.0"
     },
+    "name": "ree",
+    "bin": "out_rel.js",
     "dependencies": {
         "blessed": "0.1.81",
         "pty.js": "0.3.1",
         "react-blessed": "0.2.1",
         "react": "16.2.0",
-        "create-react-class": "15.6.3"
+        "create-react-class": "15.6.3",
+        "node-pty": "0.7.4"
     },
     "scripts": {
         "build-cljs": "shadow-cljs release rel",
         "watch-cljs": "shadow-cljs watch dev",
-        "build-binary": "pkg $*"
+        "build-binary": "pkg package.json $*"
     }
 }

@@ -2,7 +2,7 @@
   (:require 
     [cljs.core.async :refer [chan <! >! timeout pub sub unsub unsub-all]]
     ["child_process" :as child_process :refer [spawn]]
-    ["pty.js" :as pty])
+    ["node-pty" :as pty])
   (:require-macros [cljs.core.async.macros :refer [go go-loop]])
   (:use-macros [shrimp-log.macros :only [trace debug spy]]))
 

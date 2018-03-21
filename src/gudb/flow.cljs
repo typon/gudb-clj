@@ -1,11 +1,11 @@
 (ns gudb.flow
-  (:require [cljs.core.async :as a]
-            [gudb.gdb :refer [gdb-cmds]])
+  (:require [cljs.core.async :as a])
   (:require-macros [cljs.core.async.macros :refer [go go-loop]])
   (:use-macros [shrimp-log.macros :only [trace debug spy]]))
 
 (defonce app-state (atom {:elements {}
-                          :input-box-value "Empty!"
+                          :input-box-value ""
+                          :history-box-value []
                           :changed false
                           }))
 (defonce actions (a/chan))
@@ -26,9 +26,9 @@
 (go-loop []
          (when-let [a (a/<! actions)]
            (let [[type data] a]
-             ;(trace (str "Handle action: " type "\nData: " data))
+             (trace (str "Handle action: " type "\nData: " data))
              (swap! app-state transform data dispatch type))
-             ; (trace (str "State: " @app-state))
+             (trace (str "State: " @app-state))
           (recur)))
 
 ;; State here is map, not atom!
@@ -45,7 +45,9 @@
     ; (dispatch :set-box-contents {:el output-box :value curr-text})
     ; (when-not (= (:input-box-value state) curr-text) (assoc state :input-box-value curr-text))))
     ; (a/put! gdb-cmds curr-text)
-    (assoc state :input-box-value curr-text)
+    ;(assoc state :input-box-value curr-text)
+    
+    (identity state)
     ))
 
 (defmethod transform :input-box-reset
@@ -57,7 +59,26 @@
     ; (when-not (= (:input-box-value state) curr-text) (assoc state :input-box-value curr-text))))
     ; (a/put! gdb-cmds curr-text)
     (.clearValue input-box)
+    (.readInput input-box nil)
     (assoc state :input-box-value "")))
+
+(defmethod transform :input-box-submit
+  [state text]
+  (do 
+    ; (.setContent output-box curr-text)
+    ; (dispatch :set-box-contents {:el output-box :value curr-text})
+    ; (when-not (= (:input-box-value state) curr-text) (assoc state :input-box-value curr-text))))
+    ; (a/put! gdb-cmds curr-text)
+    (dispatch :history-box-append text) 
+    (dispatch :input-box-reset nil) 
+    (identity state)))
+
+(defmethod transform :history-box-append
+  [state item]
+  (let [[history-box] [(get-in state [:elements :history-box])]]
+      (.pushItem history-box item)
+      (.setScrollPerc history-box 100)
+      (update-in state [:history-box-value] (fn [lst] (conj lst item)))))
 
 
 (defmethod transform :set-box-contents

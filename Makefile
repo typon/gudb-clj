@@ -28,7 +28,8 @@ $(NPM_OUTPUT): $(NPM_INPUT)
 	npm install
 
 $(OUTPUT_EXE):
-	npm run build-binary -- --target=$(PLATFORM) $(OUTPUT_REL_JS) --output=$(OUTPUT_EXE)
+	# npm run build-binary -- --target=$(PLATFORM) $(OUTPUT_REL_JS) --output=$(OUTPUT_EXE) -d 
+	npm run build-binary -- --target=$(PLATFORM) --output=$(OUTPUT_EXE) 
 
 
 .PHONY: build run release clean watch
