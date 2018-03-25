@@ -4,8 +4,6 @@
         "source-map-support": "^0.5.3",
         "pkg": "4.3.0"
     },
-    "name": "ree",
-    "bin": "out_rel.js",
     "dependencies": {
         "blessed": "0.1.81",
         "pty.js": "0.3.1",

@@ -48,7 +48,6 @@
     [callback] [(.. gdb-proc -stdout)]
    ]
     (reset! gdb-proc gdb-proc')
-    (.on (.-stdout gdb-proc') "data" (fn [msg] (debug (str "STDOUT FROM GDB:\n" msg))))
-    (.on (.-stderr gdb-proc') "data" (fn [msg] (debug (str "ERROR FROM GDB:\n" msg))))
+    (.on (.-stdout gdb-proc') "data" (fn [msg] (trace (str "STDOUT FROM GDB:\n" msg))))
+    (.on (.-stderr gdb-proc') "data" (fn [msg] (trace (str "ERROR FROM GDB:\n" msg))))
     (.on p-tty "data" (fn [msg] (debug (str "MESSAGE FROM PTTY:\n" msg))))))
-

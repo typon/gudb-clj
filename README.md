@@ -23,8 +23,10 @@ Read what others have to say about it!
 
 ### Requirements for building from source
 
-1. node.js
-2. npm
+1. build-essential (i.e. gcc, Make, etc.)
+2. node.js (>= 9.0)
+3. npm
+4. Java Development Kit (>= 8.0)
 
 ### How to build from source
 

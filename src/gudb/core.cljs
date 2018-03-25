@@ -12,44 +12,27 @@
     ["react-blessed" :as react-blessed])
   (:use-macros [shrimp-log.macros :only [debug trace spy]]))
 
-
 (l/set-opts! :out-file :log-file
              :pretty-print true
-             :log-level :trace)
+             :log-level :debug)
+
+(defonce process (js* "process"))
 
 
-
-; (def app-state (atom {:display 0 :history []}))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Components
-
-; (def mybox
-;   (r-el "box" {
-;     "top" "center",
-;     "left" "center",
-;     "width" "50%",
-;     "height" "50%",
-;     "content" "Blessed React WORKS WOOO try this {bold} world{/bold}"
-;     "border" {"type" "line"},
-;     "style" {"fg" "white", "bg" "magenta"}
-;     "tags" true}))
-
-; (def App
-;   (r-component "App"
-;    :render (fn [props] mybox)))
-
+(defn process-args [] 
+  (assoc {} :prog-path (nth (.-argv process) 2)))
 
 (defn render [state]
   (do 
     (debug "Rendering...........")
     (react-blessed/render (r-el App state) screen)))
 
-(defn main! [] (do
-  (trace "Starting gudb")
-  (load-gdb "/Users/typon/githubz/gudb/sample_program/simple")
-  (.key screen (clj->js ["escape" "q" "C-c"]) (fn [ch, key] (js/process.exit 0)))
-  (render @app-state)
+(defn main! []
+  (let [{:keys [prog-path]} (process-args)]
+    (trace "Starting gudb")
+    (load-gdb prog-path)
+    (.key screen (clj->js ["escape" "q" "C-c"]) (fn [ch, key] (js/process.exit 0)))
+    (render @app-state)
   ))
 
 ; Every time state changes, call render function again to redraw everything.
@@ -63,4 +46,3 @@
         (dissoc old-state :elements)
         (dissoc new-state :elements))
       (render new-state))))
-                                
