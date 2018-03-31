@@ -1,11 +1,16 @@
 ;; shadow-cljs configuration
 {
+    :nrepl {:port 8202}
+
     :source-paths [
         "src"
     ]
 
     :dependencies [
+        [cider/cider-nrepl "0.17.0-SNAPSHOT"]
         [shrimp-log "0.1.0-SNAPSHOT"]
+        [instaparse "1.4.8"]
+        [com.rpl/specter "1.1.0"]
     ]
 
     :builds {
@@ -18,6 +23,10 @@
             :target :node-script
             :output-to "out_dev.js"
             :main gudb.core/main!
+            ; add in reload hooks
+;            :devtools {
+;                       :before-load gudb.shadow/stop
+;                       :after-load gudb.shadow/start}}}}
         }
     }
 }

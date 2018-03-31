@@ -2,7 +2,8 @@
 
 int main() {
 
-  printf("Hello world1\n");
+  int i = 5;
+  printf("Hello world1 %d\n", i);
   printf("Hello world2\n");
 
   return 0;
