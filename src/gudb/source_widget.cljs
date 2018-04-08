@@ -3,7 +3,7 @@
    [clojure.string :as string]
    [gudb.utils :refer [r-el r-component]]
    [gudb.streams :refer [dispatch app-state transform]]
-   [cljs.pprint :refer [cl-format]]
+   [cljs.pprint :refer [cl-format pprint]]
    [shrimp-log.core :as l]
    ["fs" :as fs]
    ["blessed" :as blessed]
@@ -66,37 +66,31 @@
             (set! (.. el -position -top) (spy :trace @row-offset))))))))
 
 
-(defn code->elements [code key-offset]
-  ;; (let [
-  ;;       [code'] [(string/split-lines code)]
-  ;;       [code''] [(interleave code' (repeat "\n"))]
-  ;;       [code'''] [(concat code'')]
-  ;;       [words] [(mapcat #(string/split % #" ") code''')]
-  ;;       ]
-    (let [[code'] [(interleave (string/split-lines code) (repeat ":NL"))]
-         ;[code'''] [(concat code'')]
-          [words] [(mapcat #(string/split % #"(?=[ ])") code')]
+(defn code->elements [code-raw-text source-box]
+    (let [code-lines (string/split-lines code-raw-text)
+          ; [words] [(mapcat #(string/split % #"(?=[ ])") code')]
           ]
+      (for [[ix line] (map-indexed vector code-lines)]
+        (let [line-el (blessed/box (clj->js {:height "0%+1" :top ix :wrap false :parent source-box}))
+              words (string/split (spy :trace line) #"(?=[ ])")
+              word-lengths (map count words)
+              word-lefts (reductions + 0 word-lengths)
+              word-els (map #(blessed/text (clj->js {:content %1 :left %3 :parent line-el :hoverText (str %1 "0") :wrap false :width %2}))  words word-lengths word-lefts)
+                         ;; (debug (str "word: " word))
+                         ;; (debug (str "wordlenth: " word-length))
+                          ;; (debug (str "wordleft: " word-left)))
+                          ]
 
-    (vector (map-indexed (fn [index word] (r-el "text" {:key (+ key-offset index) :content word})) words))))
+          (vector word-els)))))
 
 (defmethod transform :source-box-update
   [state _]
   (let [source-box (get-in state [:elements :source-box])
-        line (blessed/box (clj->js {:height "0%+1" :parent source-box :shrink true :top @cnt}))
-        txt (blessed/text (clj->js {:content (str "ree" @cnt) :left 0 :parent line :hoverText "REEZ"}))
-        txt2 (blessed/text (clj->js {:content "ray" :left 10 :parent line  :hoverText "RAYS" }))
-        ; line-text (str "ree" @cnt "      " "ray")
-        ; box-content (.-content source-box)
-        ; full-content (str box-content "\n" line-text)
-        ; txt3 (blessed/text (clj->js {:content "ray" :hoverText "RAYS" :width "100%" :parent source-box}))
-       ]
-    ; (.pushItem source-box (blessed/text {"ree" "ss"}))
-    ; (.pushItem source-box txt3)
-    ;; (.focus source-box)
-    ; (.setHover (aget (.-items source-box) 1) "OUEA")
-    ; (.setContent source-box full-content)
-    ; (debug "Sourcebox: " (.-content source-box))
+        word-els (code->elements (read-file "/Users/typon/githubz/gudb/sample_program/simple.c") source-box)
+        ]
+    ; (debug word-els)
+    ; (debug word-els)
+    ; (doall word-els)
     (set! (.-scroll source-box) (fn [offset always]
                                   (let [-offset (* -1 offset)
                                         source-box-height (.-height source-box)
@@ -104,16 +98,87 @@
                                         first-child-top (.-top first-child)
                                         last-child (last (.-children source-box))
                                         last-child-top (.-top last-child)]
-                                    (debug "Scrolled: " offset )
-                                    (debug "Scrolled: neg " -offset )
                                     (when (and (<= (+ first-child-top -offset) 0) (>= (+ last-child-top -offset) (- source-box-height 1))
                                       (doseq [child (.-children source-box)]
-                                      (set! (.-top child) (+ (.-top child) -offset))))))))
-    ; (set! (.-top source-box) "50%")
-    (debug "children: " (count (.-children source-box)))
-    (.render @screen-ref)
-    (swap! cnt inc)
-    (assoc-in state [:source-box-value] "REE")))
+                                      (set! (.-top child) (+ (.-top child) -offset)))))
+                                    )))
+
+    ; (.render @screen-ref)
+    (assoc-in state [:source-box-value :word-els] word-els)))
+
+;; (defmethod transform :source-box-update
+;;   [state _]
+;;   (let [source-box (get-in state [:elements :source-box])
+;;         line (blessed/box (clj->js {:height "0%+1" :parent source-box :top @cnt :wrap false}))
+;;         txt (blessed/text (clj->js {:content (str "ree" @cnt) :left 0 :parent line :hoverText "REEZ" :wrap false :width 6}))
+;;         ; txt2 (blessed/text (clj->js {:content "hello there sir what r  u doing hurr" :left 10 :parent line  :hoverText "RAYS" :wrap false}))
+;;         txt2 (blessed/text (clj->js {:content "1234512345123451234512345123451234512345" :left 10 :parent line  :hoverText "RAYS" :wrap false :width 40}))
+;;         ; line-text (str "ree" @cnt "      " "ray")
+;;         ; box-content (.-content source-box)
+;;         ; full-content (str box-content "\n" line-text)
+;;         ; txt3 (blessed/text (clj->js {:content "ray" :hoverText "RAYS" :width "100%" :parent source-box}))
+;;        ]
+;;     ; (.pushItem source-box (blessed/text {"ree" "ss"}))
+;;     ; (.pushItem source-box txt3)
+;;     ;; (.focus source-box)
+;;     ; (.setHover (aget (.-items source-box) 1) "OUEA")
+;;     ; (.setContent source-box full-content)
+;;     ; (debug "Sourcebox: " (.-content source-box))
+;;     (set! (.-scroll source-box) (fn [offset always]
+;;                                   (let [-offset (* -1 offset)
+;;                                         source-box-height (.-height source-box)
+;;                                         first-child (first (.-children source-box))
+;;                                         first-child-top (.-top first-child)
+;;                                         last-child (last (.-children source-box))
+;;                                         last-child-top (.-top last-child)]
+;;                                     (debug "Scrolled: " offset )
+;;                                     (when (and (<= (+ first-child-top -offset) 0) (>= (+ last-child-top -offset) (- source-box-height 1))
+;;                                       (doseq [child (.-children source-box)]
+;;                                       (set! (.-top child) (+ (.-top child) -offset)))))
+;;                                     ;; (when (and (<= (+ first-child-top -offset) 0) (>= (+ last-child-top -offset) (- source-box-height 1))
+;;                                     ;;           (doseq [child (.-children source-box)]
+;;                                     ;;             (set! (.-left child) (+ (.-top child) -offset)))))
+;;                                     )))
+
+;;     ; (set! (.-top source-box) "50%")
+;;     (debug "children: " (count (.-children source-box)))
+;;     (.render @screen-ref)
+;;     (doseq [child (.-children (first (.-children source-box)))]
+;;       ; (debug (.dir js/console child))
+;;       (debug (.-type child))
+;;       (debug "width: " (.-width child)))
+;;     (swap! cnt inc)
+
+;;     (let [first-line-width (reduce + 0 (map #(.-width %) (.-children (first (.-children source-box)))))]
+;;       (assoc-in state [:source-box-children 0 :width] first-line-width))))
+
+(defmethod transform :source-box-keypress
+  [state key-obj]
+  (let [source-box (get-in state [:elements :source-box])
+        offset (case (get key-obj "full")
+                "right" 1
+                "left" -1
+                nil) ; Default case
+        ]
+
+    (let [source-box-width (.-width source-box)
+            first-child (first (.-children source-box))
+            first-child-width (get-in state [:source-box-children 0 :width])
+            first-child-left (.-left first-child)
+            first-child-right (+ first-child-left first-child-width)
+          ]
+        (debug "First child left " first-child-left )
+        (debug "First child width " first-child-width )
+        (debug "First child right " first-child-right )
+        (debug "Source box width " source-box-width)
+        (when (and offset (> (+ first-child-right offset) source-box-width))
+          (doseq [child (.-children source-box)]
+            (debug "Scrolled-h " offset)
+            (set! (.-left child) (+ (.-left child) offset))
+          ; (assoc-in state [:source-box-value] "REE")
+            (.render @screen-ref)))
+    (identity state))))
+
 
 
 (defmethod transform :register-elem
@@ -132,7 +197,7 @@
                                                  :ref (fn [el] (dispatch :register-elem {:el-name :source-box :el-obj el}))
                                                 :key 0
                                                 ; :left 0
-                                                :width "50%"
+                                                :width "0%+20"
                                                 :height "0%+10"
                                                 :style {:fg "red" :bg "magenta", :hover {:bg "black"}},
                                                 ; :search true,
@@ -141,27 +206,25 @@
                                                 :keys true,
                                                 ; :vi true,
                                                 :scrollable true,
+                                                :wrap false,
                                                 ; :scrollbar {"ch" "|"},
                                                 ; :border {:type "line"}
                                                 ; :content "Hello"
 
                                                 ; :draggable true
-                                                :input true
+                                                ; :onKeypress (fn [_ key-obj] (dispatch :source-box-keypress (js->clj key-obj)))
                                                 ; :onScroll (fn [event] (dispatch :source-box-scroll event))
-                                                :onScroll (fn [event dir] (debug "Scroll: " event dir))
                                                 ; :items ["hello" "there"]
                                                 ; :hoverText "OYEEEEE"
 
-                                                }
-                                         ))))
+                                                })
+                         )))
 
 
 (def App
   (r-component "App"
                :render (fn [props]
-                          (r-el SourceBox merge (props {:height "100%" :width "100%"}))
-                         ; (r-el SourceBox (merge props {:key 1 :height "10%" :width "10%"}))
-                          )))
+                          (r-el SourceBox (merge props {:key 10 :height "50%" :width "50%"})))))
 
 
 (defn render [state]
