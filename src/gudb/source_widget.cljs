@@ -3,13 +3,19 @@
    [clojure.string :as string]
    [gudb.utils :refer [r-el r-component]]
    [gudb.streams :refer [dispatch app-state transform]]
+   [gudb.colors :refer [color-scheme-prism]]
    [cljs.pprint :refer [cl-format pprint]]
    [shrimp-log.core :as l]
+   [instaparse.core :as insta :refer-macros [defparser]]
    ["fs" :as fs]
    ["blessed" :as blessed]
    ["react" :as react]
    ["react-blessed-contrib" :refer [createBlessedComponent]]
    ["react-blessed" :as react-blessed]
+   ["prismjs" :as prism]
+   ["highlightjs" :as hljs]
+   ["cheerio" :as cheerio]
+   ; ["highlightjs/styles/solarized_light.css" :as sl]
    [pylon.classes])
   (:use-macros [shrimp-log.macros :only [debug trace spy]]
                [pylon.macros :only [defclass super]]))
@@ -20,6 +26,11 @@
              :log-level :debug)
 
 
+(defn jsx->clj
+  [x]
+  (into {} (for [k (.keys js/Object x)] [k (aget x k)])))
+
+
 (defonce screen-ref (atom nil))
 ;; (defonce app-state (atom {}))
 (defonce cnt (atom 0))
@@ -27,6 +38,70 @@
 (defn read-file [path]
   (let []
     (.readFileSync fs path "utf8")))
+
+
+(def tokenizer
+  (insta/parser
+   "<sentence> = token*
+     <token> = valid | anything
+     <valid> = #'\\w+'
+     <anything> = #'[^\\w]+'"))
+
+(defn extract-variables [variables text]
+  (let [tokenized (tokenizer text)
+        tokenized' (for [token tokenized]
+                    (if (contains? variables token)
+                      [:variable token]
+                      [:text token]))
+        partitioned (partition-by #(first %1) tokenized')
+        collapsed (map (fn [tokens]
+                          (case (first (first tokens))
+                        :variable [:variable (second (first tokens))]
+                        :text [:text (string/join (map #(second %1) tokens))])) partitioned)]
+        collapsed))
+
+
+(defn highlight-node
+  ([variables type text]
+   (let [tokens (extract-variables variables text)]
+    (for [token tokens] (into token [:length (count (second token))]))))
+  ([variables type text highlight-class]
+   (let [tokens (extract-variables variables text)]
+                    (for [token tokens]
+                      [(first token) (str "{" (or (get color-scheme-prism highlight-class) (:token.default color-scheme-prism)) "-fg}" (second token) "{/}") :length (count (second token))]))))
+
+(defn highlight-nodes [variables nodes]
+  (let [tokenized (for [node nodes]
+                    (case (.-type node)
+                      "text" (highlight-node variables :plain (.-data node))
+                      "tag" (highlight-node variables :highlighted (.-data (first (.-children node))) (keyword (string/replace (.. node -attribs -class) " " ".")))))
+        flattened (apply concat tokenized)
+        partitioned (partition-by #(first %1) flattened)]
+        _ (debug partitioned)
+        (map (fn [tokens]
+              (case (first (first tokens))
+                :variable [:variable (second (first tokens)) :length (nth (first tokens) 3)]
+                :text [:text (string/join (map #(second %1) tokens)) :length (reduce + 0 (map #(nth %1 3) tokens))])) partitioned)))
+
+
+
+
+(defn highlight-source [source-text variables]
+  (let [;hl-text (.highlightAuto hljs text)
+        pr-html (.highlight prism source-text (.. prism -languages -clike) "c")
+        pr-lines (string/split-lines pr-html)
+        $-lines (map #(.load cheerio %1) pr-lines)
+        ]
+    (for [$-line $-lines]
+      (let [$ ($-line "*")
+            contents (.contents $)
+            entries (.entries js/Object contents) ; get all child elems
+            entries' (filter #(re-matches #"[0-9]+" (first %1)) entries) ; drop all other keys, keep Nodes only
+            body (second (nth entries' 1)) ; keep only the body node, which is the second entry
+            nodes (.-children body)
+            ]
+        (spy :debug (highlight-nodes variables nodes))))))
+
 
 (defn renderer [coords]
   (let [self (js* "this")
@@ -66,31 +141,34 @@
             (set! (.. el -position -top) (spy :trace @row-offset))))))))
 
 
-(defn code->elements [code-raw-text source-box]
-    (let [code-lines (string/split-lines code-raw-text)
-          ; [words] [(mapcat #(string/split % #"(?=[ ])") code')]
-          ]
-      (for [[ix line] (map-indexed vector code-lines)]
-        (let [line-el (blessed/box (clj->js {:height "0%+1" :top ix :wrap false :parent source-box}))
-              words (string/split (spy :trace line) #"(?=[ ])")
-              word-lengths (map count words)
-              word-lefts (reductions + 0 word-lengths)
-              word-els (map #(blessed/text (clj->js {:content %1 :left %3 :parent line-el :hoverText (str %1 "0") :wrap false :width %2}))  words word-lengths word-lefts)
-                         ;; (debug (str "word: " word))
-                         ;; (debug (str "wordlenth: " word-length))
-                          ;; (debug (str "wordleft: " word-left)))
-                          ]
+(defn code->elements [highlighted-tokens source-box border]
+"Takes a source file and emits text widgets for each word"
+  (for [[ix line-tokens] (map-indexed vector highlighted-tokens)]
+    ; (debug line-tokens ix)))
+    (let [line-el (blessed/box (clj->js {:height "0%+1" :top (+ ix (if border 1 0)) :wrap false :parent source-box :width "100%-2" :left 1}))
+          word-lengths (map #(nth %1 3) line-tokens)
+          _ (debug line-tokens)
+          ; _ (debug word-lengths)
+          word-lefts (reductions + 0 word-lengths)
+          word-els (map (fn [token left length]
+                     (case (first token)
+                       :text (blessed/text (clj->js {:content (second token) :left left :parent line-el :wrap false :width length :tags true}))
+                       :variable (blessed/text (clj->js {:content (second token) :left left :parent line-el :wrap false :width length :tags true :hoverText (str (second token) "0")})))) line-tokens word-lefts word-lengths)]
 
-          (vector word-els)))))
+            ; words word-lengths word-lefts)]
+    ;;       words (string/split (spy :trace line) #"(?=[ ])")
+    ;;       word-lengths (map count words)
+          (vector word-els))))
 
 (defmethod transform :source-box-update
-  [state _]
+  [state file-path]
   (let [source-box (get-in state [:elements :source-box])
-        word-els (code->elements (read-file "/Users/typon/githubz/gudb/sample_program/simple.c") source-box)
+        border true
+        source-text (read-file file-path)
+        variables #{"i" "j" "test"}
+        highlighted-tokens (highlight-source source-text variables)
+        word-els (code->elements (spy :trace highlighted-tokens) source-box border)
         ]
-    ; (debug word-els)
-    ; (debug word-els)
-    ; (doall word-els)
     (set! (.-scroll source-box) (fn [offset always]
                                   (let [-offset (* -1 offset)
                                         source-box-height (.-height source-box)
@@ -98,12 +176,11 @@
                                         first-child-top (.-top first-child)
                                         last-child (last (.-children source-box))
                                         last-child-top (.-top last-child)]
-                                    (when (and (<= (+ first-child-top -offset) 0) (>= (+ last-child-top -offset) (- source-box-height 1))
+                                    (when (and (<= (+ first-child-top -offset) (if border 1 0)) (>= (+ last-child-top -offset) (- source-box-height (if border 2 1)))
                                       (doseq [child (.-children source-box)]
                                       (set! (.-top child) (+ (.-top child) -offset)))))
                                     )))
 
-    ; (.render @screen-ref)
     (assoc-in state [:source-box-value :word-els] word-els)))
 
 ;; (defmethod transform :source-box-update
@@ -123,7 +200,6 @@
 ;;     ;; (.focus source-box)
 ;;     ; (.setHover (aget (.-items source-box) 1) "OUEA")
 ;;     ; (.setContent source-box full-content)
-;;     ; (debug "Sourcebox: " (.-content source-box))
 ;;     (set! (.-scroll source-box) (fn [offset always]
 ;;                                   (let [-offset (* -1 offset)
 ;;                                         source-box-height (.-height source-box)
@@ -131,7 +207,6 @@
 ;;                                         first-child-top (.-top first-child)
 ;;                                         last-child (last (.-children source-box))
 ;;                                         last-child-top (.-top last-child)]
-;;                                     (debug "Scrolled: " offset )
 ;;                                     (when (and (<= (+ first-child-top -offset) 0) (>= (+ last-child-top -offset) (- source-box-height 1))
 ;;                                       (doseq [child (.-children source-box)]
 ;;                                       (set! (.-top child) (+ (.-top child) -offset)))))
@@ -141,12 +216,8 @@
 ;;                                     )))
 
 ;;     ; (set! (.-top source-box) "50%")
-;;     (debug "children: " (count (.-children source-box)))
 ;;     (.render @screen-ref)
 ;;     (doseq [child (.-children (first (.-children source-box)))]
-;;       ; (debug (.dir js/console child))
-;;       (debug (.-type child))
-;;       (debug "width: " (.-width child)))
 ;;     (swap! cnt inc)
 
 ;;     (let [first-line-width (reduce + 0 (map #(.-width %) (.-children (first (.-children source-box)))))]
@@ -197,18 +268,15 @@
                                                  :ref (fn [el] (dispatch :register-elem {:el-name :source-box :el-obj el}))
                                                 :key 0
                                                 ; :left 0
-                                                :width "0%+20"
+                                                :width "50%"
                                                 :height "0%+10"
                                                 :style {:fg "red" :bg "magenta", :hover {:bg "black"}},
-                                                ; :search true,
-                                                ; :mouse true,
-                                                ; :input true,
+                                                :content "No source file loaded."
                                                 :keys true,
-                                                ; :vi true,
                                                 :scrollable true,
                                                 :wrap false,
                                                 ; :scrollbar {"ch" "|"},
-                                                ; :border {:type "line"}
+                                                :border {:type "line"}
                                                 ; :content "Hello"
 
                                                 ; :draggable true
@@ -239,7 +307,7 @@
     (reset! screen-ref screen)
     (swap! app-state assoc-in [:elements :screen] @screen-ref)
     (.key @screen-ref (clj->js ["q" "C-c"]) (fn [ch, key] (js/process.exit 0)))
-    (.key @screen-ref (clj->js ["b"]) (fn [ch, key] (dispatch :source-box-update nil)))
+    (.key @screen-ref (clj->js ["b"]) (fn [ch, key] (dispatch :source-box-update "/Users/typon/githubz/gudb/sample_program/simple.c")))
     (.key @screen-ref (clj->js ["l"]) (fn [ch, key] (debug (str "Width: " (.-width @screen-ref) "Hiegth: " (.-height @screen-ref)))))
     (.enableInput @screen-ref)
     (render @app-state)))
