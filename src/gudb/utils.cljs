@@ -3,7 +3,14 @@
   (:require ["blessed" :as blessed]
             ["react" :as react]
             ["create-react-class" :as create-react-class]
-            ["react-blessed" :as react-blessed]))
+            ["react-blessed" :as react-blessed]
+            ; ["editor-widget" :as editor-widget]
+            [clojure.string :as str]
+            [cljs.core.async :refer [chan <! >! go-loop close! go]]
+            )
+  (:use-macros [shrimp-log.macros :only [debug trace spy]]))
+
+
 
 
 (defn r-el
@@ -19,9 +26,38 @@
 
 (defn r-component
   "Creates react.js components"
-  [name & {:keys [render]}]
+  [name & {:keys [render componentDidMount shouldComponentUpdate]}]
   (create-react-class
-   #js {:displayName name
-        :render (fn []
-                  (this-as t
-                    (render (js->clj (.-props t) :keywordize-keys true))))}))
+   (let [base-obj {:displayName name
+                       :render (fn []
+                                 (this-as t
+                                   (render (js->clj (.-props t) :keywordize-keys true))))}
+        base-obj' (if (some? componentDidMount) (assoc base-obj :componentDidMount componentDidMount) base-obj)
+        base-obj' (if (some? shouldComponentUpdate) (assoc base-obj :shouldComponentUpdate shouldComponentUpdate) base-obj)]
+    (clj->js base-obj'))))
+
+
+(defn timeout [ms]
+  (let [c (chan)]
+    (js/setTimeout (fn [] (close! c)) ms)
+    c))
+
+(defn throttle [c ms]
+  (let [c' (chan)]
+    (go
+      (while true
+        (>! c' (<! c))
+        (<! (timeout ms))))
+    c'))
+
+(defn unescape
+  "Unescape double back-slash escaped characters in a string."
+  [s]
+  (when s
+    (str/replace s #"\\(.)" "$1")))
+
+(defn fix-newline-escaping
+  "Fix weirdly escaped newlines such as: 'Hello\\n'"
+  [s]
+  (when s
+    (str/replace s #"\\n" "\n")))

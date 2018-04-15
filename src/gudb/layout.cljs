@@ -1,15 +1,44 @@
 (ns gudb.layout
   (:require
+   [shrimp-log.core :as l]
+   [gudb.flow]
    [gudb.utils :refer [r-el r-component]]
    [gudb.styles :refer [color-scheme]]
-   [gudb.flow]
    [gudb.streams :refer [dispatch]]
    [cljs.core.async :refer [chan <! >! timeout pub sub unsub unsub-all]]
-   ["blessed" :as blessed])
-  (:require-macros [cljs.core.async.macros :refer [go go-loop]])
+   ["blessed" :as blessed]
+   ["editor-widget" :as editor-widget]
+   ["react-blessed-contrib" :refer  [createBlessedComponent]]
+
+   ; ["editor-widget" :as Editor]
+   ; ["react-blessed-contrib" :refer  [createBlessedComponent]])
+   )
   (:use-macros [shrimp-log.macros :only [trace spy debug]]))
 
+; (def Editor (createBlessedComponent editor-widget))
+
+(debug blessed/list)
+(debug editor-widget)
+; (def Editor (createBlessedComponent blessed/list))
+(def Editor (createBlessedComponent editor-widget))
+
 (defonce screen-ref (atom nil))
+
+; import { createBlessedComponent } = 'react-blessed-contrib';
+
+; (def Editor (createBlessedComponent editor-widget))
+
+(def SourceBox
+  (r-component "SourceBox"
+               :render (fn [props] (r-el Editor {:key 123
+                                                 :label "Source" 
+                                                 :top (:top props),
+                                                 :left (:left props),
+                                                 :width (:width props),
+                                                 :height (:height props),
+                                                 :style {:fg "white",
+                                                         :bg "magenta"},
+                                                 :tags true}))))
 
 (def HistoryBox
   (r-component "HistoryBox"
@@ -44,7 +73,7 @@
                                                 :bottom (:bottom props),
                                                 :right (:right props),
                                                 :width (:width props)
-                                                :height (:width props)
+                                                :height (:height props)
                                                 :invertSelected false,
                                                 :alwaysScroll true,
                                                 :scrollable true,
@@ -127,8 +156,9 @@
   (r-component "MainLayout"
                :render (fn [props]
                          (r-el "element" {}
-                               (r-el CommandContainer (merge props {:key 0 :height "50%" :width "50%" :left 0 :bottom 0}))
-                               (r-el ProgramOutputBox (merge props {:key 1 :height "50%" :width "50%" :right 0 :bottom 0}))))))
+                               (r-el SourceBox (merge props {:key 0 :height "50%" :width "50%" :left 0 :top 0}))
+                               (r-el CommandContainer (merge props {:key 1 :height "50%" :width "50%" :left 0 :bottom 0}))
+                               (r-el ProgramOutputBox (merge props {:key 2 :height "50%" :width "50%" :right 0 :bottom 0}))))))
                                ;))))
 
 (def App

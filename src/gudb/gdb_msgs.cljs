@@ -1,0 +1,28 @@
+(ns gudb.gdb-msgs
+  (:require
+   [clojure.string :as string]
+   [com.rpl.specter :as sp]
+   [gudb.streams :refer [dispatch]])
+  (:use-macros [shrimp-log.macros :only [trace debug spy info]]))
+
+(defonce gdb-cmds-state (atom ""))
+
+(defn handle-gdb-result [record-type record parse-tree]
+  (case (spy :trace record-type)
+    ; :ASYNC_RECORD (dispatch :history-box-append (sp/select-one [sp/FIRST sp/ALL string?] parse-tree))
+    :ASYNC_RECORD (trace (str "UNHANLDED: " record))
+    :RESULT_RECORD (case (spy :trace (sp/select-one [sp/FIRST 1 sp/FIRST] record))
+                      :ERROR (dispatch :history-box-append {:type :gdb :item (spy :trace (str (sp/select-one [sp/FIRST 1 1 1] record)))})
+                      :DONE ()
+                      (trace (str "UNCAUGHT RESULT: " record)))
+
+    :STREAM_RECORD (dispatch :history-box-append {:type :gdb :item (str (sp/select-one [sp/FIRST 1] (spy :trace record)))})
+    :GDB_INTERNAL_RECORD (let [[text] [(sp/select-one [sp/FIRST 1] (spy :trace record))]]
+                           (when
+                               (and (not= text @gdb-cmds-state)
+                                    (not= text "The program is not being run."))
+                               (dispatch :history-box-append {:type :gdb :item text})))
+    :GDB_EXTRA ()
+    ; (trace (str "UNCAUGHT: " (sp/select-one [sp/FIRST 1] record)))
+    (trace (str "UNCAUGHT: " parse-tree))
+  ))

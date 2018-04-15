@@ -1,12 +1,14 @@
 (ns gudb.gdb-mi-parser
   (:require [clojure.reader :refer [read-string]])
-  (:require [clojure.string :as str])
+  (:require [clojure.string :as string])
   (:require [clojure.spec.alpha :as s])
   (:require [cljs.tools.reader.edn :as edn])
   (:require [goog.string :as gstring] [goog.string.format])
   (:require [com.rpl.specter :as sp])
   (:require [com.rpl.specter :as sp :refer-macros [select transform]])
-  (:require [instaparse.core :as insta :refer-macros [defparser]]))
+  (:require [instaparse.core :as insta :refer-macros [defparser]])
+  (:require [gudb.utils :refer [unescape fix-newline-escaping]])
+  )
 
 ;; (def possible-states #{"done", "running", "connected", "error", "exit"})
 ;; (s/def ::state (s/cat :1 #{\d}
@@ -70,12 +72,13 @@
 ;;                  <rbrace> = '}'
 ;;                  <NUMBER> = #'[0-9]+'"))
 
-(defparser gdb-output-parser "<S> = ASYNC_RECORD | STREAM_RECORD | RESULT_RECORD | GDB_INTERNAL_RECORD
+(defparser gdb-output-parser "<S> = ASYNC_RECORD | STREAM_RECORD | RESULT_RECORD | GDB_INTERNAL_RECORD | GDB_EXTRA
                  ASYNC_RECORD = (<eq> | <star>) ANYTHING+
                  STREAM_RECORD = (<tilde> | <at>) <q> (not_q | esc_q)+ <q> <not_q*>
                  RESULT_RECORD = <carat> STATE NEWLINE?
-                 GDB_INTERNAL_RECORD = <amp> ANYTHING
-                 STATE = DONE | 'running' | 'connected' | 'error' | 'exit'
+                 GDB_INTERNAL_RECORD = <amp> <q> (not_q | esc_q)+ <q> <not_q*>
+                 GDB_EXTRA = '(gdb)' ANYTHING*
+                 <STATE> = DONE | 'running' | 'connected' | ERROR | 'exit'
                  DONE = <'done'> (<','> RESULT)*
                  RESULT = BKPT_RESULT
                  BKPT_RESULT = <'bkpt'> <eq> <lbrace> BKPT_RESULT_FIELDS+ <rbrace>
@@ -107,6 +110,8 @@
                                       ('what' <eq> <q> ANYTHING <q>)
                  <BKPT_TYPE> = 'breakpoint' | 'catchpoint'
                  <CATCH_TYPE> = 'unkown'
+                 ERROR = <'error'> <',msg='> TEXT_IN_QUOTES
+                 TEXT_IN_QUOTES = <q> (not_q | esc_q)+ <q>
                  <star> = '*'
                  <carat> = '^'
                  <tilde> = '~'
@@ -123,8 +128,13 @@
                  <NUMBER> = #'[0-9]+'
                  <HEX_NUMBER> = #'0x[0-9]+'")
 
-(def transformer (partial insta/transform {:STREAM_RECORD (fn [& c] [:STREAM_RECORD (apply str c)])
-                                           :ASYNC_RECORD (fn [& c] [:ASYNC_RECORD (apply str c)])
+(defn chars-to-str [tag & cs] [tag (->> cs (apply str) fix-newline-escaping unescape string/trim)])
+
+(def transformer (partial insta/transform {:STREAM_RECORD (partial chars-to-str :STREAM_RECORD)
+                                           :ASYNC_RECORD (partial chars-to-str :ASYNC_RECORD)
+                                           :GDB_INTERNAL_RECORD (partial chars-to-str :GDB_INTERNAL_RECORD)
+                                           ; :RESULT_RECORD [:ERROR [:TEXT_IN_QUOTES (fn [& c] [:TEXT_IN_QUOTES (apply str c)])]]
+                                           :TEXT_IN_QUOTES (partial chars-to-str :TEXT_IN_QUOTES)
                                           }))
 
 

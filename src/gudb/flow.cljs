@@ -1,5 +1,6 @@
 (ns gudb.flow
   (:require [gudb.streams :refer [dispatch transform]]
+            [gudb.constants :refer [prefix]]
             [gudb.gdb :refer [gdb-chan gdb-stdout-sub]]
             [cljs.core.async :refer [chan <! >! put!]])
   (:require-macros [cljs.core.async.macros :refer [go go-loop]])
@@ -92,16 +93,18 @@
                (dispatch :input-box-reset "")
                (identity state))
     (do
-      (dispatch :history-box-append (str (:prefix state) " " text))
+      (dispatch :history-box-append {:type :cmd :item text})
       (dispatch :input-box-reset "")
       (dispatch :auto-box-reset nil)
       (go (>! gdb-chan {:topic :cmd-sent :cmd text}))
       (identity state))))
 
 (defmethod transform :history-box-append
-  [state item]
-  (let [[history-box] [(get-in state [:elements :history-box])]]
-    (.pushItem history-box item)
+  [state msg]
+  (let [[history-box] [(get-in state [:elements :history-box])]
+        [item] [(:item msg)]
+        [disp-text] [(case (:type msg) :cmd (str prefix " " item) item)]]
+    (.pushItem history-box disp-text)
     (.setScrollPerc history-box 100)
     (update-in state [:history-box-value] (fn [lst] (conj lst item)))))
 
