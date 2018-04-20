@@ -1,13 +1,13 @@
 (ns gudb.utils
   "Defines general purpose utility functions related to react, gdb and other dependencies"
-  (:require ["blessed" :as blessed]
-            ["react" :as react]
-            ["create-react-class" :as create-react-class]
-            ["react-blessed" :as react-blessed]
-            ; ["editor-widget" :as editor-widget]
-            [clojure.string :as str]
-            [cljs.core.async :refer [chan <! >! go-loop close! go]]
-            )
+  (:require
+    [clojure.string :as str]
+    [cljs.core.async :refer [chan <! >! go-loop close! go]]
+    ["blessed" :as blessed]
+    ["react" :as react]
+    ["create-react-class" :as create-react-class]
+    ["react-blessed" :as react-blessed]
+    ["fs" :as fs])
   (:use-macros [shrimp-log.macros :only [debug trace spy]]))
 
 
@@ -32,9 +32,9 @@
                        :render (fn []
                                  (this-as t
                                    (render (js->clj (.-props t) :keywordize-keys true))))}
-        base-obj' (if (some? componentDidMount) (assoc base-obj :componentDidMount componentDidMount) base-obj)
-        base-obj' (if (some? shouldComponentUpdate) (assoc base-obj :shouldComponentUpdate shouldComponentUpdate) base-obj)]
-    (clj->js base-obj'))))
+        base-obj (if (some? componentDidMount) (assoc base-obj :componentDidMount componentDidMount) base-obj)
+        base-obj (if (some? shouldComponentUpdate) (assoc base-obj :shouldComponentUpdate shouldComponentUpdate) base-obj)]
+    (spy :info (clj->js base-obj)))))
 
 
 (defn timeout [ms]
@@ -61,3 +61,11 @@
   [s]
   (when s
     (str/replace s #"\\n" "\n")))
+
+(defn read-file [path]
+  (let []
+    (.readFileSync fs path "utf8")))
+
+(defn clamp "Clamp n to (min-n, max-n)"
+  [n min-n max-n]
+  (min max-n (max min-n n)))

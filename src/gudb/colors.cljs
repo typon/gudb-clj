@@ -1,6 +1,9 @@
 (ns gudb.colors)
 
 (defonce color-scheme-prism {
+  :cyan "#2aa198" ; /* cyan */
+  :base01 "#586e75" ; /* base01 */
+
   :token.default "#586e75" ; /* base01 */
 
   :token.comment "#93a1a1" ; /* base1 */
@@ -80,3 +83,10 @@
    :hljs-built_in "#dc322f"
    :hljs-deletion "#dc322f"
    })
+
+(defonce hl-lineno-style
+  {:bg  (:cyan color-scheme-prism)})
+
+(defonce lineno-style
+  {:bg  (:base01 color-scheme-prism)})
+
