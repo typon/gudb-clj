@@ -69,3 +69,7 @@
 (defn clamp "Clamp n to (min-n, max-n)"
   [n min-n max-n]
   (min max-n (max min-n n)))
+
+(defn jsx->clj
+  [x]
+  (into {} (for [k (.keys js/Object x)] [k (aget x k)])))
