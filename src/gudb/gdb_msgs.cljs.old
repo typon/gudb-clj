@@ -2,7 +2,7 @@
   (:require
    [clojure.string :as string]
    [com.rpl.specter :as sp]
-   [gudb.streams :refer [dispatch]])
+   [gudb.streams :refer [app-state]])
   (:use-macros [shrimp-log.macros :only [trace debug spy info]]))
 
 (defonce gdb-cmds-state (atom ""))
@@ -19,9 +19,10 @@
     :STREAM_RECORD (dispatch :history-box-append {:type :gdb :item (str (sp/select-one [sp/FIRST 1] (spy :trace record)))})
     :GDB_INTERNAL_RECORD (let [[text] [(sp/select-one [sp/FIRST 1] (spy :trace record))]]
                            (when
-                               (and (not= text @gdb-cmds-state)
-                                    (not= text "The program is not being run."))
-                               (dispatch :history-box-append {:type :gdb :item text})))
+                               (or (= text @gdb-cmds-state)
+                                   (= text "The program is not being run."))
+                               ; (dispatch :history-box-append {:type :gdb :item text})))
+                               (debug (str "UNCAUGHT GDB_INTERNAL_RECORD: " text))))
     :GDB_EXTRA ()
     ; (trace (str "UNCAUGHT: " (sp/select-one [sp/FIRST 1] record)))
     (trace (str "UNCAUGHT: " parse-tree))

@@ -8,9 +8,11 @@
    [potok.core :as ptk]
    [cljs.core.async :refer [chan <! >! timeout pub sub unsub unsub-all put! sliding-buffer]]
    [cljs.pprint :refer [pprint]]
-   [gudb.utils :refer [throttle]]
+   [gudb.utils :refer [throttle jsx->clj]]
    [gudb.streams :refer [app-state]]
    [gudb.gdb-mi-parser :refer [gdb-output-parser gdb-output-transformer]]
+   [gudb.bpts :as bpts]
+   [gudb.threads :as threads]
    [gudb.history-widget :as hbox]
    [gudb.progout-widget :as pbox])
    ; [gudb.gdb-msgs :refer [handle-gdb-result gdb-cmds-state]]
@@ -25,32 +27,61 @@
 (defonce gdb-proc (atom nil))
 
 
-(defrecord Handle-GDB-Result [record-type record parse-tree]
+(defrecord Handle-GDB-Result [r-type r-sub-type record parse-tree]
   ptk/WatchEvent
   (watch [_ state stream]
-    (case (spy :trace record-type)
-      :ASYNC_RECORD (do
-                      (debug (str "UNCAUGHT RESULT: " record))
-                      (rx/empty))
-
-      :RESULT_RECORD (case (spy :trace (sp/select-one [sp/FIRST 1 sp/FIRST] record))
-                        :ERROR (rx/just (hbox/->History-Box-Append :gdb (spy :trace (str (sp/select-one [sp/FIRST 1 1 1] record)))))
-                        :DONE (rx/empty)
+    (let [rcontents (first record)]
+      (debug "PARSE TREE: ")
+      (debug (str parse-tree))
+      (debug (str "RECORD: " record))
+      (debug (str "RTYPE: " r-type))
+      (debug (str "RSUBTYPE: " r-sub-type))
+      (case r-type
+        :ASYNC_RECORD (case r-sub-type
+                        :BKPT_CREATED (rx/just (bpts/->Add rcontents))
+                        :STOPPED (rx/just (threads/->Set-Stopped-Info rcontents))
                         (do
-                          (debug (str "UNCAUGHT RESULT: " record))
+                          (debug (str "UNCAUGHT ASYNC RECORD: " record))
                           (rx/empty)))
 
-      :STREAM_RECORD (rx/just (hbox/->History-Box-Append :gdb (str (sp/select-one [sp/FIRST 1] (spy :trace record)))))
-      :GDB_INTERNAL_RECORD (let [[text] [(sp/select-one [sp/FIRST 1] (spy :trace record))]]
-                            (if (and (not= text (get-in state [:gdb :last-cmd]) (not= text "The program is not being run.")))
-                              (rx/just (hbox/->History-Box-Append :gdb text))
-                              (rx/empty)))
-      :GDB_EXTRA (rx/empty)
-      ; (trace (str "UNCAUGHT: " (sp/select-one [sp/FIRST 1] record)))
-      (do
-        (debug (str "UNCAUGHT RESULT: " parse-tree))
-        (rx/empty)))))
 
+        ;; :RESULT_RECORD (case (spy :trace (sp/select-one [sp/FIRST 1 sp/FIRST] record))
+        ;;                   :ERROR (rx/just (hbox/->History-Box-Append :gdb (spy :trace (str (sp/select-one [sp/FIRST 1 1 1] record)))))
+        ;;                   ; :DONE (do (debug (str "DONE RESULT_RECORD: " record) (rx/empty)))
+        ;;                   ; :DONE (case (sp/select-one [sp/FIRST 1 1 1]
+        ;;                   :DONE (case (sp/select-one [sp/FIRST 1 1 1 0] record)
+        ;;                           ; TODO: Maybe check here that the last gdb command was
+        ;;                           ; a break-insert
+        ;;                           :BKPT_RESULT (rx/just (bpts/->Create (extract-bpt-result record)))
+        ;;                           (rx/empty))
+        ;;                   (do
+        ;;                     (debug (str "UNCAUGHT RESULT RECORD: " record))
+        ;;                     (rx/empty)))
+
+        :STREAM_RECORD (rx/just (hbox/->History-Box-Append :gdb (spy :info rcontents)))
+        :GDB_INTERNAL_RECORD (let [last-cmd (get-in state [:gdb :last-cmd])]
+                               (case r-sub-type
+                                 :MISC_INTERNAL_RECORD (cond
+                                                        (= rcontents last-cmd) (rx/empty)
+                                                        (= rcontents "The program is not being run.") (rx/empty)
+                                                        :else (rx/just (hbox/->History-Box-Append :gdb rcontents)))))
+                                                          ; :else (rx/empty)))
+        :GDB_EXTRA (rx/empty)
+        ; (trace (str "UNCAUGHT: " (sp/select-one [sp/FIRST 1] record)))
+        (do
+          (debug (str "UNCAUGHT OUTPUT: " parse-tree))
+          (rx/empty))))))
+
+
+(defrecord Thread-Stopped [info]
+  ptk/WatchEvent
+  (watch [_ state stream]
+    rx/empty))
+
+(defn extract-bpt-result [record]
+  (let [result-fields (sp/select [sp/FIRST 1 1 1 sp/ALL vector? (sp/srange 1 3)] record)
+        xformed (sp/transform [sp/ALL 0] keyword result-fields)]
+    (into {} xformed)))
 
 (defrecord Output-Received-Raw [text]
   ptk/EffectEvent
@@ -60,10 +91,13 @@
 (defrecord Output-Received [text]
   ptk/WatchEvent
   (watch [_ state stream]
-    (let [parse-tree (gdb-output-parser (spy :trace text))
-          transformed (gdb-output-transformer parse-tree)
-          record-type (sp/select-one [sp/FIRST sp/FIRST] (spy :trace transformed))]
-      (rx/just (->Handle-GDB-Result record-type transformed parse-tree)))))
+    (let [_ (debug "Raw Text: " text)
+          parse-tree (gdb-output-parser text)
+          transformed (gdb-output-transformer (spy :trace parse-tree))
+          record-sub-type (sp/select-one [0 1 0] parse-tree)
+          record-type (sp/select-one [sp/FIRST sp/FIRST] parse-tree)
+          ]
+      (rx/just (->Handle-GDB-Result record-type record-sub-type transformed parse-tree)))))
 
 (def xform-gdb-output
   (comp
@@ -97,11 +131,13 @@
 (defrecord Send-Cmd' [cmd]
   ptk/UpdateEvent
   (update [_ state]
-    (assoc-in state [:gdb :last-cmd] cmd))
+    (let []
+      (debug "SENDING: " cmd)
+      (assoc-in state [:gdb :last-cmd] cmd)))
 
   ptk/EffectEvent
   (effect [_ state stream]
-    (.write (.-stdin @gdb-proc) (str cmd "\r\n"))))
+    (.write (.-stdin @gdb-proc) (str cmd "\n"))))
 
 (defrecord Init-GDB []
   ptk/WatchEvent
@@ -124,13 +160,11 @@
 
 (defn load-gdb [executable-path]
   (let [[p-tty] [(spawn-pseudo-tty)]
-        ; ; [gdb-args] [(clj->js ["-i=mi2",  (spy :info (str "-tty=" (.-_pty p-tty))), executable-path])]
         [gdb-args] [(clj->js ["-i=mi",  (str "-tty=" (.-_pty p-tty)), executable-path])]
         [gdb-proc'] [(spawn "gdb" gdb-args)]
         [callback] [(.. gdb-proc -stdout)]]
     (reset! gdb-proc gdb-proc')
-    (.on (.-stdout gdb-proc') "data" #(ptk/emit! app-state (->Output-Received (str %))))
+    (.on (.-stdout gdb-proc') "data" #(ptk/emit! app-state (->Output-Received-Raw (str %))))
     (.on (.-stderr gdb-proc') "data" (fn [msg] (debug (str "ERROR FROM GDB:\n" msg))))
-    ; (.on p-tty "data" (fn [text] (dispatch :target-output-received {:thread 0 :text text})))))
     (.on p-tty "data" #(ptk/emit! app-state (pbox/->Target-Output-Received-Raw %1 0)))
     (ptk/emit! app-state (->Init-GDB))))

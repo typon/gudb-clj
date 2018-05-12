@@ -3,7 +3,7 @@
    [clojure.string :as string]
    [cljs.cache :as cache]
    [gudb.utils :refer [r-el r-component read-file clamp]]
-   [gudb.streams :as strm :refer [app-state]]
+   [gudb.streams :as strm :refer [app-state app-state-view]]
    [gudb.colors :as colors]
    [cljs.pprint :refer [cl-format pprint]]
    [shrimp-log.core :as l]
@@ -280,10 +280,49 @@
                                                 :content "{center}No source file loaded.{/}"
                                                 :valign :middle
                                                 :tags true,
-                                                ; :focused true,
+                                                :focused true,
                                                 :keys true,
                                                 :input true,
                                                 :wrap false,
                                                 :border {:type "line"}
                                                 :onKeypress (fn [_ key-obj] (ptk/emit! app-state (->Source-Box-Key-Press-Buff (js->clj key-obj))))
                                                 }))))
+
+(def App
+  (r-component "App"
+               :render (fn [props]
+                          (r-el SourceBox (merge props {:key 10 :height "50%" :width "50%"})))))
+
+
+(defn render [state]
+  (do
+    (trace "Rendering...........")
+    (react-blessed/render (r-el App state) @screen-ref)))
+
+(defn main! []
+  (let [[screen] [(blessed/screen (clj->js {:smartCSR true "cursor.blink" true :log "blessedz.log" :autoPadding false}))]
+        ]
+    (debug "Starting GUDB!")
+    (reset! screen-ref screen)
+    (ptk/emit! app-state (strm/->Register-Elem :screen @screen-ref))
+    ;(swap! app-state assoc-in [:elements :screen] @screen-ref)
+    (.key @screen-ref (clj->js ["q" "C-c"]) (fn [ch, key] (js/process.exit 0)))
+    (.key @screen-ref (clj->js ["b"]) (fn [ch, key] (do
+                                                      (ptk/emit! app-state (strm/->Set-Active-Variables #{"i" "j" "test"}))
+                                                      (ptk/emit! app-state (->Set-Current-Source-Text "/Users/typon/githubz/gudb/sample_program/large.c"))
+                                                      (ptk/emit! app-state (->Source-Box-Display-Window [0 20]))
+                                                      )))
+
+                                                      ;())))
+    ; (rx/on-value (rx/from-event @screen-ref "key") #(debug "key: " %1))
+                                                      ;(dispatch :set-active-variables #{"i" "j" "test"})
+                                                      ; (dispatch :set-current-source-text "/Users/typon/githubz/gudb/sample_program/simple.c")
+                                                      ; (dispatch :source-box-initialize [0 50]))))
+    (.key @screen-ref (clj->js ["l"]) (fn [ch, key] (debug (str "Width: " (.-width @screen-ref) "Hiegth: " (.-height @screen-ref)))))
+    (.enableInput @screen-ref)
+    (render @app-state-view)))
+
+(def state-change (rx/subscribe app-state
+                       #(trace (str "State:\n"  %))
+                       #(warn "on-error:" %)
+                       #(info "on-end:")))

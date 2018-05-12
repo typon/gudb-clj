@@ -1,6 +1,5 @@
 (ns gudb.layout
   (:require
-   [shrimp-log.core :as l]
    [gudb.utils :refer [r-el r-component]]
    [gudb.styles :refer [color-scheme]]
    [gudb.streams :refer [app-state]]
@@ -8,9 +7,7 @@
    [gudb.input-widget :as ibox]
    [gudb.progout-widget :as pbox]
    [gudb.history-widget :as hbox]
-   ; [cljs.core.async :refer [chan <! >! timeout pub sub unsub unsub-all]]
-   ; ["blessed" :as blessed]
-   [clojure.string :as str])
+   )
   (:use-macros [shrimp-log.macros :only [trace spy debug]]))
 
 (defonce screen-ref (atom nil))
@@ -78,9 +75,9 @@
   (r-component "MainLayout"
                :render (fn [props]
                          (r-el "element" {}
-                               ; (r-el sbox/SourceBox (merge props {:key 0 :height "50%" :width "50%" :left 0 :top 0}))
+                               (r-el sbox/SourceBox (merge props {:key 10 :height "50%" :width "50%" :left 0 :top 0}))
                                (r-el CommandContainer (merge props {:key 1 :height "50%" :width "50%" :left 0 :bottom 0}))
-                               ;(r-el ProgramOutputBox (merge props {:key 2 :height "50%" :width "50%" :right 0 :bottom 0}))))))
+                               (r-el pbox/ProgramOutputBox (merge props {:key 2 :height "50%" :width "50%" :right 0 :bottom 0}))
                                ))))
 
 (def App

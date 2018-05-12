@@ -36,7 +36,12 @@
 (defrecord History-Box-Append [msg-type text]
   ptk/UpdateEvent
   (update [_ state]
-    (update-in state [:history-box :items] #(conj % text)))
+    (let []
+      (as-> state $
+          (case msg-type
+            :cmd (update-in $ [:history-box :cmds] #(conj % text))
+            $)
+        (update-in $ [:history-box :items] #(conj % text)))))
 
   ptk/EffectEvent
   (effect [_ state stream]
@@ -44,5 +49,7 @@
           disp-text (case msg-type
                          :cmd (str prefix " " text)
                          text)]
+      (trace "APPENDING TO HISTORY BOX: " text)
+      (trace "APPENDING TO HISTORY BOX (type): " (str msg-type))
       (.pushItem history-box disp-text)
       (.setScrollPerc history-box 100))))

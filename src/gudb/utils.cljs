@@ -56,11 +56,14 @@
   (when s
     (str/replace s #"\\(.)" "$1")))
 
-(defn fix-newline-escaping
-  "Fix weirdly escaped newlines such as: 'Hello\\n'"
+(defn fix-escaping
+  "Fix weirdly escaped characters like tabs and newlines such as: 'Hello\\n'
+  or '\\tHello'"
   [s]
   (when s
-    (str/replace s #"\\n" "\n")))
+    (-> s
+      (str/replace #"\\n" "\n")
+      (str/replace #"\\t" "\t"))))
 
 (defn read-file [path]
   (let []

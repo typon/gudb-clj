@@ -11,6 +11,10 @@
         [shrimp-log "0.1.0-SNAPSHOT"]
         [instaparse "1.4.8"]
         [com.rpl/specter "1.1.0"]
+        [org.bodil/pylon "0.3.0"]
+        [org.clojars.mmb90/cljs-cache "0.1.4"]
+        [funcool/potok "2.3.0"]
+        [funcool/beicon "4.1.0"]
     ]
 
     :builds {
@@ -18,6 +22,7 @@
             :target :node-script
             :output-to "out_rel.js"
             :main gudb.core/main!
+
         }
         :dev {
             :target :node-script
@@ -28,5 +33,15 @@
 ;                       :before-load gudb.shadow/stop
 ;                       :after-load gudb.shadow/start}}}}
         }
+      :src {
+        :target :node-script
+        :output-to "out_editor.js"
+        :main gudb.source-widget/main!
+        :compiler-options
+          {
+             :source-map true
+          :pretty-print true}
+      }
+
     }
 }

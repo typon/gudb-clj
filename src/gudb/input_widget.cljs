@@ -2,9 +2,9 @@
   (:require
    [beicon.core :as rx]
    [potok.core :as ptk]
-   [gudb.utils :refer [r-el r-component]]
+   [gudb.utils :refer [r-el r-component jsx->clj]]
    [gudb.styles :refer [color-scheme]]
-   [gudb.streams :as strm :refer [app-state]]
+   [gudb.streams :as strm :refer [app-state app-state-view]]
    [gudb.history-widget :as hbox]
    [gudb.gdb :as gdb])
   (:use-macros [shrimp-log.macros :only [trace spy debug]]))
@@ -12,8 +12,10 @@
 (def InputBox
   (r-component
    "InputBox"
+   :componentDidMount (fn [] (ptk/emit! app-state (->Input-Box-Initialize)))
+   :shouldComponentUpdate (fn [nextProps, nextState] false)
    :render (fn [props]
-             (r-el
+            (r-el
               "textbox"
               {:ref #(ptk/emit! app-state (strm/->Register-Elem :input-box %))
               :key key
@@ -23,41 +25,91 @@
               :height 1,
               :mouse true,
               :tags true
-              :keys true
+              ; :keys true
               :inputOnFocus true
               :style (:input-box color-scheme)
-              :onKeypress (fn [_ key-obj] (ptk/emit! app-state (->Input-Box-Keypress (js->clj key-obj))))
+              ; :readInput (fn [ev] (debug (str "KEYYYY: "ev)))
+              ; :onKeypress (fn [_ key-obj] (.setValue (get-in @app-state-view [:elements :input-box]) "REE"))
+              ; :onKeypress (fn [ch key-obj] (ptk/emit! app-state (->Input-Box-Keypress ch (js->clj key-obj))))
               :onSubmit #(ptk/emit! app-state (->Input-Box-Submit %1))
-              :onCancel #(ptk/emit! app-state (->Input-Box-Cancel))}))))
+              ; :onCancel #(ptk/emit! app-state (->Input-Box-Cancel))
+              }))))
 
-(defrecord Input-Box-Keypress [key-obj]
+
+(defn input-box-key-press [ch key]
+  (do
+    (trace (str "Emitting inputboxkey: " key))
+    (ptk/emit! app-state (->Input-Box-Keypress (js->clj ch) (js->clj key)))))
+
+(defrecord Input-Box-Initialize []
+  ptk/UpdateEvent
+  (update [_ state]
+    (let [input-box (get-in state [:elements :input-box])
+          kf (.-__olistener input-box)]
+      (trace "Initializing input box!!!!!!!!!")
+      (assoc-in state [:input-box :keypress-func] kf)))
+
+  ptk/EffectEvent
+  (effect [_ state stream]
+    (let [input-box (get-in state [:elements :input-box])]
+      (set! (.-__olistener input-box) input-box-key-press))))
+
+
+(defrecord Input-Box-Update-Value []
   ptk/UpdateEvent
   (update [_ state]
     (let [curr-text (.-value (get-in state [:elements :input-box]))]
-      (assoc-in state [:input-box :value] curr-text)))
+      (trace (str "In IBOX (update): current value: " curr-text))
+      (assoc-in state [:input-box :value] curr-text))))
 
+(defrecord Input-Box-Default-Key-Handler [ch key-obj]
+  ptk/EffectEvent
+  (effect [_ state stream]
+    (let [kf (get-in state [:input-box :keypress-func])
+          input-box (get-in state [:elements :input-box])]
+      (trace (str "Calling default key handler with: " key-obj))
+      (.call kf input-box (clj->js ch) (clj->js key-obj)))))
+
+
+(defrecord Input-Box-Keypress [ch key-obj]
   ptk/WatchEvent
   (watch [_ state stream]
-    (let [curr-text (get-in state [:input-box :value])]
+    (let [curr-text (get-in state [:input-box :value])
+          keyo key-obj]
+      (trace (str "In input key-press (watch). key: " (get key-obj "full")))
       (case (get key-obj "full")
         ; do nothing if enter was just pressed. This is handled in submit
-        "return" (rx/empty)
-        "enter" (rx/empty)
+        ; ("enter" "return") (rx/just (->Input-Box-Default-Key-Handler ch key-obj))
+        ("escape") (rx/of (->Input-Box-Cancel) (->Input-Box-Default-Key-Handler ch key-obj))
+        ("enter" "return") rx/empty
         "tab" (rx/just (->Auto-Box-Scroll :down))
         "S-tab" (rx/just (->Auto-Box-Scroll :up))
-      (rx/just (->Auto-Box-Update curr-text))))))
+        (rx/of (->Input-Box-Default-Key-Handler ch key-obj)
+               (->Input-Box-Update-Value)
+               (->Auto-Box-Update))))))
+
+
+(defrecord Input-Box-Focus []
+  ptk/EffectEvent
+  (effect [_ state stream]
+    (let [input-box (get-in state [:elements :input-box])]
+      (.focus input-box))))
 
 (defrecord Input-Box-Set [text]
   ptk/UpdateEvent
   (update [_ state]
     (let [input-box (get-in state [:elements :input-box])]
+      (trace (str "Setting input to value: " text))
       (assoc-in state [:input-box :value] text)))
 
-  ptk/EffectEvent
-  (effect [_ state stream]
+  ptk/WatchEvent
+  (watch [_ state stream]
     (let [input-box (get-in state [:elements :input-box])]
+      (trace (str "ACtually VALUE: " text ";"))
       (.setValue input-box text)
-      (.readInput input-box nil))))
+      ; (.readInput input-box #(trace "Reading input..."))
+      (rx/of (->Input-Box-Focus) (strm/->Render-Screen)))))
+
 
 (defrecord Input-Box-Cancel []
   ptk/UpdateEvent
@@ -82,10 +134,11 @@
       (case text
         ("" nil) (rx/just (->Input-Box-Set ""))
         (rx/of
-          (rx/just (hbox/->History-Box-Append :cmd text))
-          (rx/just (->Input-Box-Set ""))
-          (rx/just (->Auto-Box-Reset))
-          (rx/just (gdb/->Send-Cmd text)))))))
+          (hbox/->History-Box-Append :cmd text)
+          (->Input-Box-Set "")
+          (->Auto-Box-Reset)
+          (gdb/->Send-Cmd text))))))
+          ;))))))
 
 
 (def AutoCompleteBox
@@ -94,7 +147,7 @@
                                                  :key (:key props)
                                                  :name "auto-box"
                                                  :items (:items props)
-                                                 :hidden (empty? (:value props))
+                                                 :hidden (empty? (:items props))
                                                  :bottom 2,
                                                  :left 1,
                                                  :width "50%-2",
@@ -119,49 +172,59 @@
     (distinct $)
     (into [] $)))
 
-(defrecord Auto-Box-Update [text]
+(defrecord Auto-Box-Update []
   ptk/UpdateEvent
   (update [_ state]
-    (let [auto-box (get-in state [:elements :auto-box])
-          history-items (:history-box-items state)]
+    (let [text (get-in state [:input-box :value])
+          auto-box (get-in state [:elements :auto-box])
+          history-cmds (get-in state [:history-box :cmds])]
       (.setFront auto-box)
       (as-> state $
-        (assoc-in state [:auto-box :interactive] false)
+        (assoc-in $ [:auto-box :interactive] false)
         (case text
           "" (assoc-in $ [:auto-box :items] [])
           ; Default case
           ; figure out the matches to the current text from the history box list and remove the ones that dont match
-          (assoc-in $ [:auto-box :items] (filter-items history-items (re-pattern (str "^" text ".*")))))))))
+          (assoc-in $ [:auto-box :items] (filter-items history-cmds (re-pattern (str "^" text ".*"))))))))
+
+  ptk/WatchEvent
+  (watch [_ state stream]
+    (let [auto-items (get-in state [:auto-box :items])]
+      (case auto-items
+        [] (rx/of (->Auto-Box-Reset))
+        (rx/empty)))))
+
 
 (defrecord Auto-Box-Reset []
   ptk/UpdateEvent
   (update [_ state]
+    (-> state
+      (assoc-in [:auto-box :interactive] false)
+      (assoc-in [:auto-box :items] [])))
+
+  ptk/EffectEvent
+  (effect [_ state stream]
     (let [auto-box (get-in state [:elements :auto-box])]
       (.clearItems auto-box)
-      (set! (.-selected auto-box) 0)
-      (-> state
-        (assoc-in [:auto-box :interactive] false)
-        (assoc-in [:auto-box :items] [])))))
+      (set! (.-selected auto-box) 0))))
 
-(defrecord Auto-Box-Scroll [direction]
+(defrecord Auto-Box-Set-Interactive [interactive?]
   ptk/UpdateEvent
   (update [_ state]
-    (assoc-in state [:auto-box :interactive] true))
+    (assoc-in state [:auto-box :interactive] interactive?)))
+
+(defrecord Auto-Box-Scroll [direction]
 
   ptk/WatchEvent
   (watch [_ state stream]
     (let [auto-box (get-in state [:elements :auto-box])
           offset (case direction :down 1 :up -1)
+          _ (.move auto-box offset)
           curr-selected (when-let [item (aget (.-items auto-box) (.-selected auto-box))]
                           (.-content item))
           ; TODO: Making this render after select up/down declarative.
-          events (rx/from-coll [(->Auto-Box-Move offset) (strm/->Render-Screen)])]
-      (if curr-selected
-        (conj events (->Input-Box-Set curr-selected))
-        events))))
-
-(defrecord Auto-Box-Move [offset]
-  ptk/EffectEvent
-  (effect [_ state stream]
-    (let [auto-box (get-in state [:elements :auto-box])]
-      (.move auto-box offset))))
+          events [(->Auto-Box-Set-Interactive true)]
+          events' (if curr-selected
+                    (conj events (->Input-Box-Set curr-selected))
+                    events)]
+      (rx/from-coll events'))))
