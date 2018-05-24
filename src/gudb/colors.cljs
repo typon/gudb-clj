@@ -1,6 +1,7 @@
 (ns gudb.colors)
 
 (defonce color-scheme-prism {
+  :orange "#cb4b16"; /* orange */
   :cyan "#2aa198" ; /* cyan */
   :base01 "#586e75" ; /* base01 */
 
@@ -30,7 +31,7 @@
   :token.inserted "#2aa198" ; /* cyan */
 
   :token.entity "#657b83" ; /* base00 */
-                ; background: #eee8d5; /* base2 */
+              ; background: #eee8d5; /* base2 */
 
   :token.atrule "#859900" ; /* green */
   :token.attr-value "#859900" ; /* green */
@@ -83,10 +84,3 @@
    :hljs-built_in "#dc322f"
    :hljs-deletion "#dc322f"
    })
-
-(defonce hl-lineno-style
-  {:bg  (:cyan color-scheme-prism)})
-
-(defonce lineno-style
-  {:bg  (:base01 color-scheme-prism)})
-

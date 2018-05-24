@@ -52,8 +52,9 @@
 
 
                  <STATE> = DONE | 'running' | 'connected' | ERROR | 'exit'
-                 DONE = <'done'> (<','> RESULT)*
-                 RESULT = BKPT
+                 <DONE> = <'done'> (<','> RESULT)*
+                 <RESULT> = BKPT_CREATED2
+                 BKPT_CREATED2 = BKPT
 
                  BKPT = <'bkpt'> <eq> <lbrace> BKPT_FIELDS+ <rbrace>
                  <BKPT_FIELDS> = BKPT_FIELD | (<','> BKPT_FIELD)
@@ -86,8 +87,10 @@
                                       ('what' <eq> <q> ANYTHING <q>)
                  <BKPT_TYPE> = 'breakpoint' | 'catchpoint'
                  <CATCH_TYPE> = 'unkown'
-                 ERROR = <'error'> <',msg='> STR_IN_QUOTES
-                 STR_IN_QUOTES2 = <q> #'[^\"]*' <q>
+                 ERROR = <'error,msg='> STR_IN_QUOTES2
+                 (* ERROR = <'error'> <',msg='> STR_IN_QUOTES *)
+
+                 STR_IN_QUOTES2 = STR
                  STR_IN_QUOTES = #'\"([^\"]|\\\")*?\"'
                  <NUM_IN_QUOTES> = <q> #'[0-9]+' <q>
                  <LIST> = #'\\[[^\\[]*\\]'
@@ -145,22 +148,29 @@
       :MISC_ASYNC_RECORD identity
       :MISC_STREAM_RECORD identity
       :MISC_INTERNAL_RECORD identity
+      :RESULT_RECORD identity
+      :ERROR identity
 
       ; :BKPT_CREATED #(ptk/emit! app-state (bpts/->Create %1))
       ; :BKPT_CREATED #(ptk/emit! app-state (bpts/->Create %1))
       :BKPT_CREATED identity
+      :BKPT_CREATED2 identity
       :BKPT #(bpts/map->BPoint (into {} %&))
       :BKPT_FIELD vectorize
 
       :STOPPED #(threads/map->Stopped (into {} %&))
       :STOPPED_FIELD vectorize
 
-      :FRAME #(threads/map->Frame (into {} %&))
+      :FRAME #(threads/make-frame (into {} %&))
+      ; :FRAME #(threads/map->Frame (into {} %&))
       :FRAME_FIELD vectorize
 
-      ; :STOPPED (constantly "reez")
-      ; :GDB_INTERNAL_RECORD (partial chars-to-str :GDB_INTERNAL_RECORD)
-      :STR_IN_QUOTES normalize-str}))
+
+      :STR_IN_QUOTES normalize-str
+      :STR_IN_QUOTES2 normalize-str
+
+     
+     }))
       ;; :RESULT_RECORD [:DONE
       ;;                 [:RESULT
       ;;                  [:BKPT_RESULT_FIELD ]]]
@@ -184,3 +194,12 @@
 ;; tree
 
 ;; (insta/transform {:H str} tree)
+
+;; (def pp
+;;   (insta/parser
+;;     "S = '^error,msg=' <q> 'Function ' <q> 'foo' <q> ' not defined.' <q>
+;;      <q> = '\"'
+;; "))
+; (pp "^error,msg=\"Function \"foo\" not defined.\"")
+
+

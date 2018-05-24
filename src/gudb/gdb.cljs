@@ -12,7 +12,7 @@
    [gudb.streams :refer [app-state]]
    [gudb.gdb-mi-parser :refer [gdb-output-parser gdb-output-transformer]]
    [gudb.bpts :as bpts]
-   [gudb.threads :as threads]
+   [gudb.source-widget :as sbox]
    [gudb.history-widget :as hbox]
    [gudb.progout-widget :as pbox])
    ; [gudb.gdb-msgs :refer [handle-gdb-result gdb-cmds-state]]
@@ -31,17 +31,22 @@
   ptk/WatchEvent
   (watch [_ state stream]
     (let [rcontents (first record)]
-      (debug "PARSE TREE: ")
-      (debug (str parse-tree))
       (debug (str "RECORD: " record))
       (debug (str "RTYPE: " r-type))
       (debug (str "RSUBTYPE: " r-sub-type))
       (case r-type
         :ASYNC_RECORD (case r-sub-type
                         :BKPT_CREATED (rx/just (bpts/->Add rcontents))
-                        :STOPPED (rx/just (threads/->Set-Stopped-Info rcontents))
+                        :STOPPED (rx/just (sbox/->Set-Stopped-Info rcontents))
                         (do
                           (debug (str "UNCAUGHT ASYNC RECORD: " record))
+                          (rx/empty)))
+
+        :RESULT_RECORD (case r-sub-type
+                        :BKPT_CREATED2 (rx/just (bpts/->Add rcontents))
+                        :ERROR (rx/just (hbox/->History-Box-Append :error rcontents))
+                        (do
+                          (debug (str "UNCAUGHT RESULT RECORD: " record))
                           (rx/empty)))
 
 
@@ -73,16 +78,6 @@
           (rx/empty))))))
 
 
-(defrecord Thread-Stopped [info]
-  ptk/WatchEvent
-  (watch [_ state stream]
-    rx/empty))
-
-(defn extract-bpt-result [record]
-  (let [result-fields (sp/select [sp/FIRST 1 1 1 sp/ALL vector? (sp/srange 1 3)] record)
-        xformed (sp/transform [sp/ALL 0] keyword result-fields)]
-    (into {} xformed)))
-
 (defrecord Output-Received-Raw [text]
   ptk/EffectEvent
   (effect [_ state stream]
@@ -93,7 +88,7 @@
   (watch [_ state stream]
     (let [_ (debug "Raw Text: " text)
           parse-tree (gdb-output-parser text)
-          transformed (gdb-output-transformer (spy :trace parse-tree))
+          transformed (gdb-output-transformer (spy :info parse-tree))
           record-sub-type (sp/select-one [0 1 0] parse-tree)
           record-type (sp/select-one [sp/FIRST sp/FIRST] parse-tree)
           ]
@@ -117,14 +112,10 @@
    (map string/trim)
    (remove string/blank?)))
 
-(defrecord Send-Cmd [cmd]
-  ptk/EffectEvent
-  (effect [_ state stream]
-    nil))
 
 (rx/subscribe (->>
                (ptk/input-stream app-state)
-               (rx/filter #(instance? Send-Cmd %))
+               (rx/filter #(instance? sbox/Send-Cmd %))
                (rx/transform xform-gdb-input))
               #(ptk/emit! app-state (->Send-Cmd' %1)))
 
@@ -146,7 +137,7 @@
       (->>
        init-cmds
        (rx/from-coll)
-       (rx/map #(->Send-Cmd %))))))
+       (rx/map #(sbox/->Send-Cmd %))))))
 
 
 (defn spawn-pseudo-tty []

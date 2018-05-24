@@ -34,7 +34,7 @@
                                    (render (js->clj (.-props t) :keywordize-keys true))))}
         base-obj (if (some? componentDidMount) (assoc base-obj :componentDidMount componentDidMount) base-obj)
         base-obj (if (some? shouldComponentUpdate) (assoc base-obj :shouldComponentUpdate shouldComponentUpdate) base-obj)]
-    (spy :info (clj->js base-obj)))))
+    (clj->js base-obj))))
 
 
 (defn timeout [ms]
@@ -62,12 +62,16 @@
   [s]
   (when s
     (-> s
+      (str/replace #"\\\"" "\"")
       (str/replace #"\\n" "\n")
       (str/replace #"\\t" "\t"))))
 
 (defn read-file [path]
   (let []
     (.readFileSync fs path "utf8")))
+
+(defn file-exists? [path]
+  (.existsSync fs path))
 
 (defn clamp "Clamp n to (min-n, max-n)"
   [n min-n max-n]

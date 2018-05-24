@@ -1,4 +1,4 @@
-(ns gudb.source-widget
+(ns gudb.source-widget-standalone
   (:require
    [clojure.string :as string]
    [cljs.cache :as cache]
@@ -310,7 +310,7 @@
     (.key @screen-ref (clj->js ["b"]) (fn [ch, key] (do
                                                       (ptk/emit! app-state (strm/->Set-Active-Variables #{"i" "j" "test"}))
                                                       (ptk/emit! app-state (->Set-Current-Source-Text "/Users/typon/githubz/gudb/sample_program/large.c"))
-                                                      (ptk/emit! app-state (->Source-Box-Display-Window [0 20]))
+                                                      (ptk/emit! app-state (->Source-Box-Display-Window [0 17]))
                                                       )))
 
                                                       ;())))

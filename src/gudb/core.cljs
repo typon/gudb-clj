@@ -6,6 +6,7 @@
    [shrimp-log.core :as log]
    [beicon.core :as rx]
    [potok.core :as ptk]
+   [gudb.source-widget :as sbox]
    [clojure.string :as str]
    [cljs.pprint :refer [cl-format]]
    [gudb.utils :refer [r-el r-component jsx->clj]]
@@ -43,6 +44,8 @@
     (ptk/emit! app-state (strm/->Register-Elem :screen @screen-ref))
     ; (swap! app-state assoc-in [:elements :screen] @screen-ref)
     (.key @screen-ref (clj->js ["q" "C-c"]) (fn [ch, key] (js/process.exit 0)))
+    (.key @screen-ref (clj->js ["o"]) (fn [ch, key] (ptk/emit! app-state (sbox/->Set-Current-Source-Text "/Users/typon/githubz/gudb/sample_program/simple.c"))))
+    (.key @screen-ref (clj->js ["p"]) (fn [ch, key] (ptk/emit! app-state (sbox/->Source-Box-Display-Window [0 17]))))
     (render @app-state-view)))
 ;))
 
@@ -73,7 +76,7 @@
       (rx/map #(dissoc % :elements))
       (rx/dedupe))
  #(do
-    (debug (str "New state: " %))
+    ; (debug (str "New state: " %))
     (render %)
     ))
 

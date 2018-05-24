@@ -37,11 +37,12 @@
   ptk/UpdateEvent
   (update [_ state]
     (let [bp (map->BPoint record-map)]
-      (debug "Creating new bpt")
       (update-in state [:breakpoints] #(conj % bp)))))
 
 (defrecord Add [bpt]
   ptk/UpdateEvent
   (update [_ state]
-    (update-in state [:breakpoints] #(conj % bpt))))
+    (do
+    (debug "Creating new bpt")
+    (update-in state [:breakpoints] #(conj % bpt)))))
 

@@ -1,8 +1,18 @@
 (ns gudb.threads
   (:require
-   [potok.core :as ptk]
-   [gudb.utils :refer [jsx->clj]])
+    [potok.core :as ptk]
+    [beicon.core :as rx]
+    [gudb.utils :refer [jsx->clj file-exists?]]
+    [gudb.streams :as strm]
+    ;[gudb.source-widget :as sbox]
+    )
+
   (:use-macros [shrimp-log.macros :only [trace debug spy info]]))
+
+(defn make-frame [argmap]
+  (let [modified (update argmap :line (comp int dec))] ; decrease line number by 1 to
+                                                       ; match zero-indexed lines in gudb
+    (map->Frame modified)))
 
 (defrecord Frame [
   addr
@@ -19,12 +29,3 @@
   frame
   thread-id
   stopped-threads])
-
-
-(defrecord Set-Stopped-Info [stopped]
-  ptk/UpdateEvent
-  (update [_ state]
-    (do
-      (debug (str "Setting stopped info: " stopped))
-      (assoc-in state [:stopped-info] stopped))))
-

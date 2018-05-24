@@ -2,9 +2,6 @@
   (:require
    [clojure.string :as string]
    [cljs.cache :as cache]
-   [gudb.utils :refer [r-el r-component read-file clamp]]
-   [gudb.streams :as strm :refer [app-state]]
-   [gudb.colors :as colors]
    [cljs.pprint :refer [cl-format pprint]]
    [shrimp-log.core :as l]
    [instaparse.core :as insta :refer-macros [defparser]]
@@ -15,17 +12,22 @@
    ["react-blessed" :as react-blessed]
    ["prismjs" :as prism]
    ["cheerio" :as cheerio]
-   [pylon.classes])
+   [gudb.utils :refer [r-el r-component read-file clamp jsx->clj file-exists?]]
+   [gudb.streams :as strm :refer [app-state app-state-view]]
+   [gudb.control :as ctrl]
+   [gudb.styles :refer [styles]]
+   [gudb.colors :as colors])
+
   (:use-macros [shrimp-log.macros :only [debug trace spy info warn]]
                [pylon.macros :only [defclass super]]))
 
 
-(l/set-opts! :out-file :log-file
-             :pretty-print true
-             :log-level :debug)
+(defonce TOP-OFFSET 0)
+(defonce LEFT-OFFSET 0)
+(defonce LINE-HORIZ-PADDING 2)
 
 
-(defonce screen-ref (atom nil))
+
 
 (def tokenizer
   (insta/parser
@@ -34,24 +36,42 @@
      <valid> = #'\\w+'
      <anything> = #'[^\\w]+'"))
 
+(defn empty-cache [state]
+  (as-> state $
+   (assoc-in $ [:source-box :line-els] (cache/lru-cache-factory {} :threshold 50))
+   (assoc-in $ [:source-box :lineno-els] (cache/lru-cache-factory {} :threshold 50))))
+
+
+(defn remove-line-children [source-box]
+  (let [children (.-children source-box)
+        filtered (.filter children (fn [el] (not= (.-name el) "code-line")))]
+    (set! (.-children source-box) filtered)
+    source-box))
+
+
 (defn get-window [curr-window line-sel window-type wh num-lines]
-  (let [whh (.ceil js/Math (/ wh 2))
+  (let [wh-lower-half (.floor js/Math (/ wh 2))
+        wh-upper-half (if (even? wh) wh-lower-half (inc wh-lower-half))
         [w-start w-end] curr-window]
+    (trace (str "line-sel: " line-sel))
+    (trace (str "window-type: " window-type))
+    (trace (str "Curr window: " curr-window))
+    (trace (str "wh: " wh))
     (case window-type
       :default (cond
                 (< line-sel w-start) [line-sel (+ line-sel wh)]
                 (> line-sel w-end) [(- line-sel wh) line-sel]
                 :else curr-window)
       :center (cond
-                (>= (+ line-sel whh) num-lines) [(dec (- num-lines wh)) (dec num-lines)]
-                (< (- line-sel whh) 0) [0 wh]
-                :else [(- line-sel whh) (+ line-sel whh)]
+                (>= (+ line-sel wh-upper-half) num-lines) [(dec (- num-lines wh)) (dec num-lines)]
+                (< (- line-sel wh-lower-half) 0) [0 wh]
+                :else [(- line-sel wh-lower-half) (+ line-sel wh-upper-half)]
       ))))
 
 (defn create-lineno-token [lineno num-lines]
   (let [total-width (count (str num-lines))
         fmt-str (str "~" total-width "d")
-        lineno-str (cl-format nil fmt-str lineno)]
+        lineno-str (cl-format nil fmt-str (inc lineno))]
     [:lineno lineno-str :length (count lineno-str)]))
 
 (defn extract-variables [variables text]
@@ -94,7 +114,6 @@
   (let [pr-html (.highlight prism source-line (.. prism -languages -clike) "c")
         $-line (.load cheerio pr-html)
         ]
-    ;(for [$-line $-lines]
     (let [$ ($-line "*")
           contents (.contents $)
           entries (.entries js/Object contents) ; get all child elems
@@ -107,10 +126,9 @@
 (defrecord Create-Source-Line-El [lineno]
   ptk/UpdateEvent
   (update [_ state]
-    (let [
-          source-line (get-in state [:source-box :source-lines lineno])
+    (let [source-line (get-in state [:source-box :source-lines lineno])
           line-tokens (highlight-source-line source-line (get-in state [:variables]))
-          line-el (blessed/box (clj->js {:height "0%+1" :wrap false :width "100%-2" :left 1}))
+          line-el (blessed/box (clj->js {:height "0%+1" :wrap false :width (str "100%-" LINE-HORIZ-PADDING) :left LEFT-OFFSET :name "code-line"}))
           lineno-token (create-lineno-token lineno (get-in state [:source-box :num-source-lines]))
           space-token [:text " " :length 1]
           line-tokens' (cons lineno-token (cons space-token line-tokens))
@@ -118,7 +136,7 @@
           word-lefts (reductions + 0 word-lengths) ; This number adds padding to the line.
           word-els (clj->js (map (fn [token left length]
                                     (case (first token)
-                                     :lineno (blessed/text (clj->js {:content (second token) :left left :parent line-el :wrap false :width length :tags true :style colors/lineno-style}))
+                                     :lineno (blessed/text (clj->js {:content (second token) :left left :parent line-el :wrap false :width length :tags true :style (get-in styles [:sbox :lineno :default])}))
                                      :text (blessed/text (clj->js {:content (second token) :left left :parent line-el :wrap false :width length :tags true}))
                                      :variable (blessed/text (clj->js {:content (second token) :left left :parent line-el :wrap false :width length :tags true :hoverText (str (second token) "0")})))) line-tokens' word-lefts word-lengths))
           ]
@@ -128,15 +146,102 @@
           (assoc-in [:source-box :line-els lineno] line-el)
           (assoc-in [:source-box :lineno-els lineno] (first word-els))))))
 
-(defrecord Line-Highlight [lineno type]
+(defrecord Line-Highlight [type]
   ptk/EffectEvent
   (effect [_ state stream]
-    (let [lineno-el (get-in state [:source-box :lineno-els lineno])]
-      (case type
-        :unselect (set! (.-style lineno-el) (clj->js colors/lineno-style))
-        :select (set! (.-style lineno-el) (clj->js colors/hl-lineno-style))))))
+    (case type
+      :stopped
+        (let [prev (first @stopped-line!)
+              curr (second @stopped-line!)
+              prev-lineno-el (get-in state [:source-box :lineno-els prev])
+              curr-lineno-el (get-in state [:source-box :lineno-els curr])]
+          (trace (str "sel line: " @sel-line!))
+          (trace (str "stopped line: " @stopped-line!))
+          (trace (str "Prev stopped line: " prev))
+          (trace (str "Current stopped line: " curr))
+          (trace (str "Prev stopped lineel: " prev-lineno-el))
+          (trace (str "Current stopped lineel: " curr-lineno-el))
+          (cond
+            (= prev nil) (set! (.-style curr-lineno-el) (clj->js (get-in styles [:sbox :lineno :stopped]))) ; Start of stream, prev is nil.
+          :else (set! (.-style curr-lineno-el) (clj->js (get-in styles [:sbox :lineno :stopped]))))
+          (when (and (not= nil prev-lineno-el) (not= prev (second @sel-line!)))
+            (set! (.-style prev-lineno-el) (clj->js (get-in styles [:sbox :lineno :default])))))
 
-(defrecord Source-Box-Scroll [lineno type window-hint]
+      :clear-stopped
+          (let [prev (first @stopped-line!)
+                curr (second @stopped-line!)
+                prev-lineno-el (get-in state [:source-box :lineno-els prev])
+                curr-lineno-el (get-in state [:source-box :lineno-els curr])]
+            ;; (debug (str "sel line: " @sel-line!))
+            ;; (debug (str "stopped line: " @stopped-line!))
+            ;; (debug (str "Prev stopped line: " prev))
+            ;; (debug (str "Current stopped line: " curr))
+            ;; (debug (str "Prev stopped lineel: " prev-lineno-el))
+            ;; (debug (str "Current stopped lineel: " curr-lineno-el))
+
+            (when-not (= curr-lineno-el nil)
+              (set! (.-style curr-lineno-el) (clj->js (get-in styles [:sbox :lineno :default]))))
+            (when-not (= prev-lineno-el nil)
+              (set! (.-style prev-lineno-el) (clj->js (get-in styles [:sbox :lineno :default])))))
+      :breakpoint
+        (let [prev (first @stopped-line!)
+              curr (second @stopped-line!)
+              prev-lineno-el (get-in state [:source-box :lineno-els prev])
+              curr-lineno-el (get-in state [:source-box :lineno-els curr])]
+          (trace (str "sel line: " @sel-line!))
+          (trace (str "stopped line: " @stopped-line!))
+          (trace (str "Prev stopped line: " prev))
+          (trace (str "Current stopped line: " curr))
+          (trace (str "Prev stopped lineel: " prev-lineno-el))
+          (trace (str "Current stopped lineel: " curr-lineno-el))
+          (cond
+            (= prev nil) (set! (.-style curr-lineno-el) (clj->js (get-in styles [:sbox :lineno :stopped]))) ; Start of stream, prev is nil.
+          :else (set! (.-style curr-lineno-el) (clj->js (get-in styles [:sbox :lineno :stopped]))))
+          (when (and (not= nil prev-lineno-el) (not= prev (second @sel-line!)))
+            (set! (.-style prev-lineno-el) (clj->js (get-in styles [:sbox :lineno :default])))))
+
+
+      ; :unselect (set! (.-style lineno-el) (clj->js colors/lineno-style))
+      :select
+        (let [prev-sel (first @sel-line!)
+              curr-sel (second @sel-line!)
+              stopped-line (second @stopped-line!)
+              prev-lineno-el (get-in state [:source-box :lineno-els prev-sel])
+              curr-lineno-el (get-in state [:source-box :lineno-els curr-sel])]
+            (debug (str "stopped line: " stopped-line))
+            (debug (str "sel line: " @sel-line!))
+            (debug (str "Prev select line: " prev-sel))
+            (debug (str "Current select line: " curr-sel))
+            ; (debug (str "Prev select lineel: " prev-lineno-el))
+            ; (debug (str "Current select lineel: " curr-lineno-el))
+
+        (when (and (not= nil prev-lineno-el) (not= prev-sel stopped-line))
+          (set! (.-style prev-lineno-el) (clj->js (get-in styles [:sbox :lineno :default]))))
+        (when-not (= curr-sel stopped-line)
+          (do
+            (debug (str "Highlighting line: " curr-sel))
+            (debug (str "Setting style: " (get-in styles [:sbox :lineno :selected])))
+          (set! (.-style curr-lineno-el) (clj->js (get-in styles [:sbox :lineno :selected])))))))))
+
+(def sel-line!
+  (rx/to-atom
+    (as-> app-state $
+      (rx/map #(get-in % [:source-box :current-line]) $); Extract the current selected line
+      (rx/dedupe $)
+      (rx/concat (rx/just 0) $) ; Initialize by highlight line 0
+      (rx/buffer 2 1 $)  ; Remember the last two current lines
+      )))
+
+(def stopped-line!
+  (rx/to-atom
+    (as-> app-state $
+      (rx/map #(get-in % [:stopped-info :frame :line]) $); Extract the current selected line
+      (rx/dedupe $)
+      (rx/concat (rx/just nil) $) ; Initialize by highlight line 0
+      (rx/buffer 2 1 $)  ; Remember the last two current lines
+      )))
+
+(defrecord Source-Box-Scroll [lineno type window-type]
   ptk/UpdateEvent
   (update [_ state]
     (let [new-sel (clamp lineno 0 (dec (get-in state [:source-box :num-source-lines])))]
@@ -149,10 +254,10 @@
           curr-window (get-in state [:source-box :window])
           wh (dec (get-in state [:source-box :window-height]))
           num-lines (get-in state [:source-box :num-source-lines])
-          new-window (get-window curr-window line-sel window-hint wh num-lines)
+          new-window (get-window curr-window line-sel window-type wh num-lines)
           ]
       (if (= new-window curr-window)
-        (rx/from-coll [(->Line-Highlight line-sel :select) (strm/->Render-Screen)])
+        (rx/of (->Line-Highlight :select) (strm/->Render-Screen))
         (rx/just (->Source-Box-Display-Window new-window))))))
 
 
@@ -170,7 +275,8 @@
 (defrecord Source-Box-Key-Press [key-objs]
   ptk/WatchEvent
   (watch [_ state stream]
-    (let [curr (get-in state [:source-box :current-line])
+    (let [curr-line (get-in state [:source-box :current-line])
+          curr-file (get-in state [:stopped-info :frame :fullname])
           num-lines (get-in state [:source-box :num-source-lines])
           wh (dec (get-in state [:source-box :window-height]))
           page-offset (* 1 wh)
@@ -179,12 +285,22 @@
                 (vector (get (aget key-objs 0) "full") (get (aget key-objs 1) "full")))
           ]
       (case key
-        "down" (rx/of (->Line-Highlight curr :unselect) (->Source-Box-Scroll (inc curr) :cursor :default))
-        "up" (rx/from-coll [(->Line-Highlight curr :unselect) (->Source-Box-Scroll (dec curr) :cursor :default)])
-        "S-g" (rx/from-coll [(->Line-Highlight curr :unselect) (->Source-Box-Scroll (dec num-lines) :cursor :default)])
-        "C-f" (rx/from-coll [(->Line-Highlight curr :unselect) (->Source-Box-Scroll (+ curr page-offset) :cursor :center)])
-        "C-u" (rx/from-coll [(->Line-Highlight curr :unselect) (->Source-Box-Scroll (- curr page-offset) :cursor :center)])
-        ["g" "g"] (rx/from-coll [(->Line-Highlight curr :unselect) (->Source-Box-Scroll 0 :cursor :default)])
+        ; Control
+        "n" (rx/just (->Send-Cmd "-exec-next"))
+        "s" (rx/just (->Send-Cmd "-exec-step"))
+        "c" (rx/just (->Send-Cmd "-exec-continue"))
+        "r" (rx/just (->Send-Cmd "-exec-run"))
+        "f" (rx/just (->Send-Cmd "-exec-finish"))
+        "u" (rx/just (->Send-Cmd "-exec-until"))
+        "b" (rx/just (->Send-Cmd (str "-break-insert " curr-line)))
+
+        ; Navigation
+        ("down" "j") (rx/of (->Source-Box-Scroll (inc curr-line) :cursor :default))
+        ("up" "k") (rx/just (->Source-Box-Scroll (dec curr-line) :cursor :default))
+        "S-g" (rx/just (->Source-Box-Scroll (dec num-lines) :cursor :default))
+        "C-f" (rx/just (->Source-Box-Scroll (+ curr-line page-offset) :cursor :center))
+        "C-u" (rx/just (->Source-Box-Scroll (- curr-line page-offset) :cursor :center))
+        ["g" "g"] (rx/just (->Source-Box-Scroll 0 :cursor :default))
         rx/empty)))) ; Default case
 
 (defrecord Source-Box-Render-Window []
@@ -194,11 +310,11 @@
           [start end] (get-in state [:source-box :window])
           lines-cache (get-in state [:source-box :line-els])
           lines-to-render (for [lineno (range start (+ end 1))] (cache/lookup lines-cache lineno))]
-      (set! (.-children source-box) (clj->js [])) ; First remove all children
-
+      (trace "@@@@@@ Rendering window @@@@")
+      (remove-line-children source-box)
       (doseq [line-el lines-to-render]
         (let [lineno (.get line-el :lineno)
-              offset (+ 1 (- lineno start))]
+              offset (+ TOP-OFFSET (- lineno start))]
           (set! (.-top line-el) (str "0%+" offset))))
       (doseq [line-el lines-to-render] ; Add all new children
         (.append source-box line-el))
@@ -237,13 +353,15 @@
       (assoc-in state [:source-box :window] [start end])))
   ptk/WatchEvent
   (watch [_ state stream]
-    (let [curr (get-in state [:source-box :current-line])]
-      (rx/concat
-        (rx/just (->Source-Box-Ensure-Cache))
-        (rx/just (->Source-Box-Render-Window))
-        (rx/just (->Line-Highlight curr :select))
-        (rx/just (strm/->Render-Screen)))))
-  )
+    (let [curr-sel (get-in state [:source-box :current-line])
+          curr-stopped (int (get-in state [:stopped-info :frame :line]))
+          ]
+      (rx/of
+        (->Source-Box-Ensure-Cache)
+        (->Source-Box-Render-Window)
+        (->Line-Highlight :select)
+        (strm/->Render-Screen)
+        ))))
 
 (defrecord Source-Box-Initialize []
   ptk/UpdateEvent
@@ -258,32 +376,108 @@
         (assoc-in [:source-box :window-height] window-height)
       ))))
 
+(defrecord Set-Label [text]
+  ptk/EffectEvent
+  (effect [_ state stream]
+    (let [source-box (get-in state [:elements :source-box])]
+      (trace "Setting label to: " text)
+      (.setLabel source-box (clj->js {:side "right" :text text})))))
+
 
 (defrecord Set-Current-Source-Text [file-path]
   ptk/UpdateEvent
   (update [_ state]
-    (let [source-text (read-file file-path)
-          state' (assoc-in state [:source-box :source-lines] (string/split-lines source-text))]
-      (assoc-in state' [:source-box :num-source-lines] (count (get-in state' [:source-box :source-lines]))))))
+    (let [source-text (read-file file-path)]
+      (as-> state $
+        (empty-cache $)
+        (assoc-in $ [:source-box :current-file] file-path)
+        (assoc-in $ [:source-box :source-lines] (string/split-lines source-text))
+        (assoc-in $ [:source-box :num-source-lines] (count (get-in $ [:source-box :source-lines]))))))
+
+    ;; (do (debug "SETTING NEW SOURCE TEXT")
+    ;; (let [source-text (read-file file-path)
+    ;;       st'(as-> state $
+    ;;            (empty-cache $)
+    ;;            (assoc-in $ [:source-box :current-file] file-path)
+    ;;            (assoc-in $ [:source-box :source-lines] (string/split-lines source-text))
+    ;;            (assoc-in $ [:source-box :num-source-lines] (count (get-in $ [:source-box :source-lines])))
+    ;;   )]
+    ;;   (debug (str "NEW STATE: " st'))
+    ;;   st')))
+
+  ptk/WatchEvent
+  (watch [_ state stream]
+    (rx/of
+     (->Set-Label (str "File: " file-path))
+     (strm/->Render-Screen))))
 
 
 (def SourceBox
   (r-component "SourceBox"
-               :componentDidMount (fn [] (ptk/emit! app-state (->Source-Box-Initialize)))
-               :shouldComponentUpdate (fn [nextProps, nextState] false)
-               :render (fn [props] (r-el "box" {
-                                                :ref (fn [el] (ptk/emit! app-state (strm/->Register-Elem :source-box el)))
-                                                :key 0
-                                                :width "50%"
-                                                :height "50%"
-                                                :style {:fg "red" :bg "magenta", :hover {:bg "black"}},
-                                                :content "{center}No source file loaded.{/}"
-                                                :valign :middle
-                                                :tags true,
-                                                ; :focused true,
-                                                :keys true,
-                                                :input true,
-                                                :wrap false,
-                                                :border {:type "line"}
-                                                :onKeypress (fn [_ key-obj] (ptk/emit! app-state (->Source-Box-Key-Press-Buff (js->clj key-obj))))
-                                                }))))
+     :componentDidMount (fn [] (ptk/emit! app-state (->Source-Box-Initialize)))
+     :shouldComponentUpdate (fn [nextProps, nextState] false)
+     :render (fn [props]
+       (r-el "box" {
+          :ref (fn [el] (ptk/emit! app-state (strm/->Register-Elem :source-box el)))
+          :key 0
+          :width "50%"
+          :height "50%"
+          :style (get-in styles [:sbox :buffer])
+          :content "{center}No source file loaded.{/}"
+          :valign :middle
+          :tags true,
+          ; :focused true,
+          :keys true,
+          ; :hidden true,
+          :input true,
+          :wrap false,
+          :border {:type "line"}
+          :onKeypress (fn [_ key-obj] (ptk/emit! app-state (->Source-Box-Key-Press-Buff (js->clj key-obj))))
+          }))))
+
+; Control commands
+(defrecord Handle-Prog-Stopped []
+  ptk/WatchEvent
+  (watch [_ state stream]
+    (rx/just (->Line-Highlight :clear-stopped))))
+    ;(do
+      ;(debug "~~~~~~~~~~Stopped program execution")
+
+(defrecord Set-Stopped-Info [stopped]
+  ptk/UpdateEvent
+  (update [_ state]
+    (assoc-in state [:stopped-info] stopped))
+
+  ptk/WatchEvent
+  (watch [_ state stream]
+    (case (get-in state [:stopped-info :reason])
+      "exited-normally" (rx/just (->Handle-Prog-Stopped))
+      (let [file (get-in state [:stopped-info :frame :fullname])]
+        (case (file-exists? file)
+          false (rx/empty)
+          true (rx/just (->Handle-Bpt-Stopped)))))))
+
+
+(defrecord Handle-Bpt-Stopped []
+  ptk/WatchEvent
+  (watch [_ state stream]
+    (let [stopped-line (get-in state [:stopped-info :frame :line])
+          curr-stopped-file (get-in state [:stopped-info :frame :fullname])
+          curr-disp-file (get-in state [:source-box :current-file])
+          ]
+      (debug "###### HANDLE BPT STOPPED ########")
+      (debug (str "current stopped file: " curr-stopped-file))
+      (debug (str "current disp file: " curr-disp-file))
+      (rx/of
+       (strm/->Set-Active-Variables #{"i" "j" "test"})
+       (if (= curr-disp-file curr-stopped-file)
+         (rx/empty)
+         (->Set-Current-Source-Text curr-stopped-file))
+       (->Source-Box-Scroll stopped-line :cursor :center)
+       (->Line-Highlight :stopped)
+       ))))
+
+(defrecord Send-Cmd [cmd]
+  ptk/EffectEvent
+  (effect [_ state stream]
+    nil))

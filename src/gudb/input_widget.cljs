@@ -3,8 +3,9 @@
    [beicon.core :as rx]
    [potok.core :as ptk]
    [gudb.utils :refer [r-el r-component jsx->clj]]
-   [gudb.styles :refer [color-scheme]]
+   [gudb.styles :refer [styles]]
    [gudb.streams :as strm :refer [app-state app-state-view]]
+   [gudb.source-widget :as sbox]
    [gudb.history-widget :as hbox]
    [gudb.gdb :as gdb])
   (:use-macros [shrimp-log.macros :only [trace spy debug]]))
@@ -27,7 +28,7 @@
               :tags true
               ; :keys true
               :inputOnFocus true
-              :style (:input-box color-scheme)
+              :style (:input-box styles)
               ; :readInput (fn [ev] (debug (str "KEYYYY: "ev)))
               ; :onKeypress (fn [_ key-obj] (.setValue (get-in @app-state-view [:elements :input-box]) "REE"))
               ; :onKeypress (fn [ch key-obj] (ptk/emit! app-state (->Input-Box-Keypress ch (js->clj key-obj))))
@@ -137,7 +138,7 @@
           (hbox/->History-Box-Append :cmd text)
           (->Input-Box-Set "")
           (->Auto-Box-Reset)
-          (gdb/->Send-Cmd text))))))
+          (sbox/->Send-Cmd text))))))
           ;))))))
 
 

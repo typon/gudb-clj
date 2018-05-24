@@ -2,28 +2,28 @@
 
 
 (def solarized {
-    :base03 "#002b36",
-    :base02 "#073642",
-    :base0  "#839496",
-    :base00 "#657b83",
-    :base01 "#586e75",
-    :base1  "#93a1a1",
-    :base2 	"#eee8d5",
-    :base3 	"#fdf6e3",
-    :yellow "#af8700",
-    :magenta "#d33682",
-    :red "#dc322f",
-    :orange "#cb4b16",
-    :violet "#6c71c4",	
-    :blue "#268bd2",
-    :cyan "#2aa198",
-    :green "#859900",
+  :base03 "#002b36",
+  :base02 "#073642",
+  :base0  "#839496",
+  :base00 "#657b83",
+  :base01 "#586e75",
+  :base1  "#93a1a1",
+  :base2 	"#eee8d5",
+  :base3 	"#fdf6e3",
+  :yellow "#af8700",
+  :magenta "#d33682",
+  :red "#dc322f",
+  :orange "#cb4b16",
+  :violet "#6c71c4",
+  :blue "#268bd2",
+  :cyan "#2aa198",
+  :green "#859900",
 })
 
 
-(def color-scheme {
+(defonce styles {
     :screen {
-        :bg (:base3 solarized)
+      :bg (:base3 solarized)
     }
     :selected {
         :bg (:base2 solarized)
@@ -45,17 +45,27 @@
         :fg (:red solarized)
         :bg (:base3 solarized)
     },
-    :editor {
-        :buffer {
-            :bg (:base3 solarized)
-            :fg (:base00 solarized)
+    :sbox {
+      :buffer {
+          :bg (:base3 solarized)
+          :fg (:base00 solarized)
+          :hover {:bg (:base3 solarized)}
+      },
+      :gutter {
+          :bg (:base2 solarized)
+          :fg (:base01 solarized)
+      },
+      :lineno {
+        :default {
+          :bg (:base01 solarized)
         },
-        :gutter {
-            :bg (:base2 solarized)
-            :fg (:base01 solarized)
-            ;:currentLine `{${solarized.blue}-bg}{${solarized.base1}-fg}{bold}`,
-            ;:currentExec `{${solarized.cyan}-bg}{${solarized.base1}-fg}{bold}`,
+        :stopped {
+          :bg (:orange solarized)
         },
+        :selected {
+          :bg (:cyan solarized)
+        },
+      }
     },
     :scrollbar {
         :bg (:base2 solarized)
@@ -102,5 +112,3 @@
         :fg (:base00 solarized)
     }
 })
-
-;(defn get-style-map [kw] ({"style color-scheme
